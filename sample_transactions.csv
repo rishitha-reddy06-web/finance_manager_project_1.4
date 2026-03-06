@@ -1,0 +1,23 @@
+type,amount,category,description,date,paymentMethod
+income,3000,Salary,Monthly salary,2025-01-01,bank_transfer
+expense,450,Food & Dining,Groceries and restaurants,2025-01-05,card
+expense,120,Transport,Fuel and commute,2025-01-08,cash
+expense,200,Shopping,Clothing,2025-01-10,card
+expense,80,Entertainment,Netflix and movies,2025-01-12,card
+expense,150,Utilities,Electricity and internet,2025-01-15,bank_transfer
+expense,300,Housing,Home maintenance,2025-01-18,bank_transfer
+income,500,Freelance,Web design project,2025-01-20,bank_transfer
+expense,60,Healthcare,Pharmacy,2025-01-22,cash
+expense,100,Education,Online course,2025-01-25,card
+income,3000,Salary,Monthly salary,2025-02-01,bank_transfer
+expense,480,Food & Dining,Groceries and dining out,2025-02-05,card
+expense,100,Transport,Bus and metro,2025-02-08,cash
+expense,250,Shopping,Electronics accessories,2025-02-12,card
+expense,70,Entertainment,Concerts,2025-02-14,card
+expense,150,Utilities,Water and electricity,2025-02-15,bank_transfer
+income,3000,Salary,Monthly salary,2025-03-01,bank_transfer
+expense,420,Food & Dining,Groceries,2025-03-05,card
+expense,130,Transport,Car service,2025-03-10,cash
+expense,350,Travel,Weekend trip,2025-03-15,card
+expense,150,Utilities,Monthly bills,2025-03-18,bank_transfer
+income,750,Freelance,Mobile app project,2025-03-22,bank_transfer
