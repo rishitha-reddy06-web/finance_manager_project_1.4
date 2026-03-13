@@ -1,14 +1,34 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const csv = require('csv-parser');
 const fs = require('fs');
+const path = require('path');
 const Transaction = require('../models/Transaction');
 const Budget = require('../models/Budget');
 const Alert = require('../models/Alert');
 const { protect } = require('../middleware/auth');
+const pdfParserService = require('../services/pdfParserService');
 
-const upload = multer({ dest: 'uploads/' });
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const upload = multer({
+  dest: uploadsDir,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+
+    // Only accept PDF files
+    if (ext === '.pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid file type '${ext}'. Only PDF files are supported.`), false);
+    }
+  }
+});
 
 // @route   GET /api/transactions
 // @desc    Get all transactions for user
@@ -76,7 +96,7 @@ router.post('/', protect, async (req, res) => {
         // Priority: exceeded (100%) > warning (threshold)
         const percentage = (budget.spent / budget.limit) * 100;
         const threshold = req.user.alertPreferences?.overspendingThreshold || 80;
-        
+
         // Only fire alert if none has been sent yet for this budget
         if (!budget.alertSent) {
           if (percentage >= 100) {
@@ -101,7 +121,7 @@ router.post('/', protect, async (req, res) => {
               severity: 'warning',
             });
           }
-          
+
           // Mark alert as sent - no more alerts for this budget
           if (percentage >= threshold) {
             budget.alertSent = true;
@@ -155,50 +175,351 @@ router.delete('/:id', protect, async (req, res) => {
   }
 });
 
-// @route   POST /api/transactions/import
-// @desc    Import transactions from CSV
-// @access  Private
-router.post('/import', protect, upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, message: 'Please upload a CSV file' });
+const VALID_CATEGORIES = new Set([
+  'Food & Dining',
+  'Transport',
+  'Shopping',
+  'Entertainment',
+  'Healthcare',
+  'Utilities',
+  'Housing',
+  'Education',
+  'Travel',
+  'Investment',
+  'Salary',
+  'Freelance',
+  'Business',
+  'Insurance',
+  'EMI & Loans',
+  'Subscriptions',
+  'Gifts & Donations',
+  'Bank Charges',
+  'Other',
+]);
 
-  const transactions = [];
-  const errors = [];
+const VALID_PAYMENT_METHODS = new Set(['cash', 'card', 'bank_transfer', 'upi', 'other']);
+const PDF_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/x-pdf',
+  'application/x-bzpdf',
+  'application/x-gzpdf',
+  'application/octet-stream',
+]);
 
-  fs.createReadStream(req.file.path)
-    .pipe(csv())
-    .on('data', (row) => {
-      try {
-        const transaction = {
-          user: req.user.id,
-          type: row.type || 'expense',
-          amount: parseFloat(row.amount),
-          category: row.category || 'Other',
-          description: row.description || '',
-          date: row.date ? new Date(row.date) : new Date(),
-          paymentMethod: row.paymentMethod || 'other',
-          importSource: 'csv',
-        };
-        if (!isNaN(transaction.amount) && transaction.amount > 0) {
-          transactions.push(transaction);
-        }
-      } catch (e) {
-        errors.push(e.message);
-      }
-    })
-    .on('end', async () => {
-      try {
-        const imported = await Transaction.insertMany(transactions, { ordered: false });
-        fs.unlinkSync(req.file.path);
-        res.json({
-          success: true,
-          message: `Imported ${imported.length} transactions`,
-          errors: errors.length > 0 ? errors : undefined,
-        });
-      } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-      }
+function safeUnlink(filePath) {
+  if (!filePath) return;
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch (err) {
+    console.error('Failed to remove uploaded file:', err.message);
+  }
+}
+
+function isPdfUpload(file) {
+  if (!file) return false;
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  return ext === '.pdf' || PDF_MIME_TYPES.has(file.mimetype);
+}
+
+function normalizePaymentMethod(paymentMethod) {
+  const value = (paymentMethod || 'other').toLowerCase().trim();
+  return VALID_PAYMENT_METHODS.has(value) ? value : 'other';
+}
+
+function normalizeCategory(category) {
+  if (!category) return 'Other';
+  
+  // Normalize the category to match exactly with valid categories
+  const value = category.trim();
+  
+  // Check for exact match (case-insensitive)
+  for (const validCat of VALID_CATEGORIES) {
+    if (validCat.toLowerCase() === value.toLowerCase()) {
+      return validCat;
+    }
+  }
+  
+  // If no exact match, try to find best match
+  const lower = value.toLowerCase();
+  if (lower.includes('food') || lower.includes('dining')) return 'Food & Dining';
+  if (lower.includes('transport') || lower.includes('travel') && !lower.includes('trip')) return 'Transport';
+  if (lower.includes('shopping')) return 'Shopping';
+  if (lower.includes('entertainment')) return 'Entertainment';
+  if (lower.includes('health') || lower.includes('medical')) return 'Healthcare';
+  if (lower.includes('util') || lower.includes('bill')) return 'Utilities';
+  if (lower.includes('housing') || lower.includes('rent')) return 'Housing';
+  if (lower.includes('education') || lower.includes('school')) return 'Education';
+  if (lower.includes('travel') || lower.includes('vacation')) return 'Travel';
+  if (lower.includes('investment') || lower.includes('stock')) return 'Investment';
+  if (lower.includes('salary') || lower.includes('income')) return 'Salary';
+  if (lower.includes('freelance')) return 'Freelance';
+  if (lower.includes('business')) return 'Business';
+  if (lower.includes('insurance') || lower.includes('policy')) return 'Insurance';
+  if (lower.includes('emi') || lower.includes('loan') || lower.includes('credit')) return 'EMI & Loans';
+  if (lower.includes('subscription')) return 'Subscriptions';
+  if (lower.includes('gift') || lower.includes('donation')) return 'Gifts & Donations';
+  if (lower.includes('charge') || lower.includes('fee') || lower.includes('bank')) return 'Bank Charges';
+  
+  return 'Other';
+}
+
+async function updateBudgetsForImportedTransactions(userId, transactions) {
+  for (const tx of transactions) {
+    if (tx.type !== 'expense') continue;
+    const txDate = new Date(tx.date);
+    const budget = await Budget.findOne({
+      user: userId,
+      category: tx.category,
+      month: txDate.getMonth() + 1,
+      year: txDate.getFullYear(),
     });
+    if (!budget) continue;
+    budget.spent += tx.amount;
+    await budget.save();
+  }
+}
+
+async function processPdfImport(req, res) {
+  let filePath = req.file?.path;
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please upload a PDF file',
+        errors: ['No file provided'],
+      });
+    }
+
+    if (req.file.size === 0) {
+      safeUnlink(filePath);
+      filePath = null;
+      return res.status(400).json({
+        success: false,
+        message: 'File is empty',
+        errors: ['The uploaded PDF file is empty'],
+      });
+    }
+
+    if (!isPdfUpload(req.file)) {
+      safeUnlink(filePath);
+      filePath = null;
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid file type',
+        errors: ['Only PDF files are supported for this endpoint'],
+      });
+    }
+
+    const parseResult = await pdfParserService.parsePdf(filePath);
+    safeUnlink(filePath);
+    filePath = null;
+
+    if (!parseResult.success) {
+      console.error('PDF parsing failed:', parseResult.error);
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to parse PDF: ' + (parseResult.error || 'Unknown error'),
+        errors: [parseResult.error || 'The PDF could not be parsed'],
+        suggestions: [
+          'Ensure the PDF is a text-based statement (not only scanned images)',
+          'Check whether the PDF is password-protected',
+          'Try a different statement format or page range',
+          'Ensure the file contains clear transaction data with date, description, and amount columns',
+        ],
+      });
+    }
+
+    if (parseResult.transactions.length === 0) {
+      console.warn('No transactions parsed from PDF', {
+        bank: parseResult.detectedBank,
+        pageCount: parseResult.pageCount,
+        textLength: parseResult.rawText?.length || 0,
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'No transactions found in PDF',
+        errors: ['No date/description/amount transaction lines were detected'],
+        bankDetected: parseResult.detectedBank,
+        format: parseResult.statementFormat,
+        pageCount: parseResult.pageCount,
+        textPreview: parseResult.rawText ? parseResult.rawText.substring(0, 500) : 'No text extracted',
+        suggestions: [
+          'Upload a full bank statement page with transaction rows',
+          'Ensure the PDF is text-based (not a scanned image)',
+          'Ensure the statement includes: Date, Description, and Amount columns',
+          'Supported date formats: DD/MM/YYYY, DD-MM-YYYY, DD Mon YYYY',
+          `Detected bank: ${parseResult.detectedBank || 'Unknown'}`,
+        ],
+      });
+    }
+
+    const duplicates = [];
+    const newTransactions = [];
+
+    for (const tx of parseResult.transactions) {
+      const exists = await Transaction.findOne({
+        user: req.user.id,
+        date: {
+          $gte: new Date(new Date(tx.date).setHours(0, 0, 0, 0)),
+          $lte: new Date(new Date(tx.date).setHours(23, 59, 59, 999)),
+        },
+        amount: {
+          $gte: tx.amount * 0.99,
+          $lte: tx.amount * 1.01,
+        },
+        description: new RegExp(tx.description.substring(0, 30).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+      });
+
+      if (exists) {
+        duplicates.push({
+          date: tx.date,
+          amount: tx.amount,
+          description: tx.description,
+          reason: 'Matching transaction already exists',
+        });
+      } else {
+        newTransactions.push({
+          ...tx,
+          category: normalizeCategory(tx.category || 'Other'),
+          paymentMethod: normalizePaymentMethod(tx.paymentMethod || 'bank_transfer'),
+          user: req.user.id,
+        });
+      }
+    }
+
+    if (newTransactions.length === 0) {
+      console.info('All transactions in PDF are duplicates', {
+        userId: req.user.id,
+        duplicateCount: duplicates.length,
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'All transactions in this PDF are duplicates',
+        errors: ['All parsed transactions already exist in your account'],
+        duplicateCount: duplicates.length,
+        duplicates: duplicates.slice(0, 10),
+        suggestions: [
+          'These transactions have already been imported',
+          'Check your transaction history to confirm',
+          'Upload a different bank statement document',
+        ],
+      });
+    }
+
+    const imported = await Transaction.insertMany(newTransactions, { ordered: false });
+    await updateBudgetsForImportedTransactions(req.user.id, imported);
+
+    console.info('PDF import successful', {
+      userId: req.user.id,
+      imported: imported.length,
+      skipped: duplicates.length,
+      parser: parseResult.parser,
+    });
+
+    return res.json({
+      success: true,
+      message: `Successfully imported ${imported.length} transactions from PDF`,
+      data: {
+        imported: imported.length,
+        skipped: duplicates.length,
+        total: parseResult.transactions.length,
+        transactions: imported,
+        duplicates: duplicates.length > 0 ? duplicates.slice(0, 5) : [],
+        parser: parseResult.parser,
+        statementFormat: parseResult.statementFormat || {
+          bank: parseResult.detectedBank,
+          pageCount: parseResult.pageCount,
+          confidence: 'medium',
+        },
+      },
+    });
+  } catch (err) {
+    console.error('PDF import error:', err);
+    safeUnlink(filePath);
+    return res.status(500).json({
+      success: false,
+      message: 'Error processing PDF upload: ' + err.message,
+      errors: [err.message || 'Unexpected error while processing the PDF'],
+      suggestions: [
+        'Try a smaller PDF',
+        'Ensure the statement is not corrupted',
+        'Check that the PDF is not password-protected',
+        'Retry the upload',
+      ],
+    });
+  }
+}
+
+// @route   POST /api/transactions/import
+// @desc    Import transactions from PDF bank statement
+// @access  Private
+router.post('/import', protect, (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            success: false,
+            message: 'File too large',
+            errors: ['File size must be less than 10MB'],
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          message: 'File upload error',
+          errors: [err.message],
+        });
+      }
+      return res.status(400).json({
+        success: false,
+        message: err.message || 'Invalid file type',
+        errors: ['Only PDF files are supported'],
+      });
+    }
+    next();
+  });
+}, async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      message: 'Please upload a PDF file',
+      errors: ['No file was provided'],
+      suggestions: [
+        'Select a .pdf file to upload',
+        'Ensure the file is not empty',
+      ],
+    });
+  }
+
+  if (isPdfUpload(req.file)) return processPdfImport(req, res);
+
+  safeUnlink(req.file.path);
+  return res.status(400).json({
+    success: false,
+    message: 'Unsupported file format',
+    errors: [`File type '${path.extname(req.file.originalname)}' is not supported`],
+    suggestions: [
+      'Only PDF files are supported',
+      'Ensure your file has the .pdf extension',
+    ],
+  });
 });
+
+// @route   POST /api/transactions/import-pdf
+// @desc    Import transactions from PDF bank statement
+// @access  Private
+router.post('/import-pdf', protect, (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({
+        success: false,
+        message: err.message || 'File upload error',
+        errors: [err.message || 'Invalid file'],
+      });
+    }
+    next();
+  });
+}, processPdfImport);
 
 // @route   GET /api/transactions/summary
 // @desc    Get monthly summary
@@ -243,7 +564,7 @@ router.get('/summary/monthly', protect, async (req, res) => {
       { $sort: { total: -1 } },
     ]);
 
-    res.json({ success: true, data: { summary, categoryBreakdown } });
+    res.json({ success: true, data: { summary, categoryBreakdown, monthlyIncome: req.user.monthlyIncome } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -289,7 +610,7 @@ router.get('/summary/cashflow', protect, async (req, res) => {
       });
     }
 
-    res.json({ success: true, data: results });
+    res.json({ success: true, data: results, monthlyIncome: req.user.monthlyIncome });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

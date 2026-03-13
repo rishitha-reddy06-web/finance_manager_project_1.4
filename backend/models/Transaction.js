@@ -33,6 +33,11 @@ const TransactionSchema = new mongoose.Schema({
       'Salary',
       'Freelance',
       'Business',
+      'Insurance',
+      'EMI & Loans',
+      'Subscriptions',
+      'Gifts & Donations',
+      'Bank Charges',
       'Other',
     ],
   },
@@ -63,6 +68,7 @@ const TransactionSchema = new mongoose.Schema({
   importSource: {
     type: String,
     default: 'manual',
+    enum: ['manual', 'csv', 'pdf', 'voice'],
   },
 }, {
   timestamps: true,

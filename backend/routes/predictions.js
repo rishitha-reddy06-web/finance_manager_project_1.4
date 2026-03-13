@@ -127,7 +127,8 @@ router.get('/savings', protect, async (req, res) => {
       },
     ]);
 
-    const avgIncome = (data.find(d => d._id === 'income')?.total || user.monthlyIncome * 3) / 3;
+    const transactedAvgIncome = (data.find(d => d._id === 'income')?.total || 0) / 3;
+    const avgIncome = Math.max(transactedAvgIncome, user.monthlyIncome || 0);
     const avgExpenses = (data.find(d => d._id === 'expense')?.total || 0) / 3;
     const monthlySavings = avgIncome - avgExpenses;
 
@@ -221,8 +222,11 @@ router.get('/recommendations', protect, async (req, res) => {
       }
     });
 
-    if (user.monthlyIncome > 0) {
-      const savingsRate = ((user.monthlyIncome - totalExpenses) / user.monthlyIncome) * 100;
+    const refIncome = Math.max(user.monthlyIncome || 0, totalExpenses); // Use profile income or total expenses as baseline
+
+    if (refIncome > 0) {
+      const actualSavings = Math.max(0, refIncome - totalExpenses);
+      const savingsRate = (actualSavings / refIncome) * 100;
       if (savingsRate < 20) {
         recommendations.push({
           category: 'Savings',

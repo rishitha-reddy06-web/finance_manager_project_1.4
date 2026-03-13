@@ -3,7 +3,7 @@ import axios from 'axios';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { toast } from 'react-toastify';
 
-const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
+const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6'];
 
 const Reports = () => {
   const now = new Date();
@@ -45,10 +45,11 @@ const Reports = () => {
     }
   };
 
-  const totalIncome = summary?.summary?.find(s => s._id === 'income')?.total || 0;
+  const transactedIncome = summary?.summary?.find(s => s._id === 'income')?.total || 0;
+  const totalIncome = transactedIncome > 0 ? transactedIncome : (summary?.monthlyIncome || 0);
   const totalExpenses = summary?.summary?.find(s => s._id === 'expense')?.total || 0;
-  const pieData = summary?.categoryBreakdown?.map(c => ({name: c._id, value: Math.round(c.total * 100) / 100})) || [];
-  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const pieData = summary?.categoryBreakdown?.map(c => ({ name: c._id, value: Math.round(c.total * 100) / 100 })) || [];
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   return (
     <div className="fade-in">
@@ -58,13 +59,13 @@ const Reports = () => {
           <p className="page-subtitle">Financial insights and export</p>
         </div>
         <div className="flex gap-3 items-center flex-wrap">
-          <select className="form-select" style={{width:120}} value={month}
+          <select className="form-select" style={{ width: 120 }} value={month}
             onChange={e => setMonth(parseInt(e.target.value))}>
-            {monthNames.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+            {monthNames.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
-          <select className="form-select" style={{width:90}} value={year}
+          <select className="form-select" style={{ width: 90 }} value={year}
             onChange={e => setYear(parseInt(e.target.value))}>
-            {[2023,2024,2025,2026].map(y => <option key={y}>{y}</option>)}
+            {[2023, 2024, 2025, 2026].map(y => <option key={y}>{y}</option>)}
           </select>
           <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}>
             📄 PDF
@@ -78,30 +79,30 @@ const Reports = () => {
       {/* Summary cards */}
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-icon" style={{background:'rgba(16,185,129,0.15)'}}>💰</div>
+          <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.15)' }}>💰</div>
           <div className="stat-content">
             <h3>Total Income</h3>
-            <div className="stat-value text-success">₹{totalIncome.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+            <div className="stat-value text-success">₹{totalIncome.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{background:'rgba(239,68,68,0.15)'}}>💸</div>
+          <div className="stat-icon" style={{ background: 'rgba(239,68,68,0.15)' }}>💸</div>
           <div className="stat-content">
             <h3>Total Expenses</h3>
-            <div className="stat-value text-danger">₹{totalExpenses.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+            <div className="stat-value text-danger">₹{totalExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{background:'rgba(99,102,241,0.15)'}}>💎</div>
+          <div className="stat-icon" style={{ background: 'rgba(99,102,241,0.15)' }}>💎</div>
           <div className="stat-content">
             <h3>Net Savings</h3>
             <div className={`stat-value ${totalIncome - totalExpenses >= 0 ? 'text-success' : 'text-danger'}`}>
-              ₹{(totalIncome - totalExpenses).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+              ₹{(totalIncome - totalExpenses).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{background:'rgba(245,158,11,0.15)'}}>📊</div>
+          <div className="stat-icon" style={{ background: 'rgba(245,158,11,0.15)' }}>📊</div>
           <div className="stat-content">
             <h3>Savings Rate</h3>
             <div className="stat-value text-warning">
@@ -119,16 +120,16 @@ const Reports = () => {
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie data={pieData} cx="50%" cy="50%" outerRadius={100}
-                  paddingAngle={2} dataKey="value" label={({name, percent}) => `${name} ${(percent*100).toFixed(0)}%`}
+                  paddingAngle={2} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   labelLine={false}>
                   {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
-                <Tooltip contentStyle={{background:'#1e293b',border:'1px solid #334155',borderRadius:8}}
-                  formatter={v => [`₹${Number(v).toLocaleString('en-IN')}`,'']} />
-               </PieChart>
+                <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
+                  formatter={v => [`₹${Number(v).toLocaleString('en-IN')}`, '']} />
+              </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div style={{height:280,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-secondary)'}}>
+            <div style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
               No expense data available
             </div>
           )}
@@ -139,19 +140,19 @@ const Reports = () => {
           <h3 className="card-title">Category Breakdown</h3>
           {pieData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={pieData} layout="vertical" margin={{left:20}}>
+              <BarChart data={pieData} layout="vertical" margin={{ left: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis type="number" tick={{fill:'#94a3b8',fontSize:12}} />
-                <YAxis type="category" dataKey="name" tick={{fill:'#94a3b8',fontSize:11}} width={100} />
-                <Tooltip contentStyle={{background:'#1e293b',border:'1px solid #334155',borderRadius:8}}
-                  formatter={v => [`₹${Number(v).toLocaleString('en-IN')}`,'']} />
-                <Bar dataKey="value" name="Amount" radius={[0,4,4,0]}>
-                  {pieData.map((_,i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                <YAxis type="category" dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} width={100} />
+                <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
+                  formatter={v => [`₹${Number(v).toLocaleString('en-IN')}`, '']} />
+                <Bar dataKey="value" name="Amount" radius={[0, 4, 4, 0]}>
+                  {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div style={{height:280,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-secondary)'}}>
+            <div style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
               No data available
             </div>
           )}
@@ -162,7 +163,7 @@ const Reports = () => {
       {pieData.length > 0 && (
         <div className="card">
           <h3 className="card-title">Detailed Breakdown</h3>
-          <div className="table-container" style={{border:'none'}}>
+          <div className="table-container" style={{ border: 'none' }}>
             <table>
               <thead>
                 <tr>
@@ -177,17 +178,17 @@ const Reports = () => {
                   <tr key={i}>
                     <td>
                       <div className="flex items-center gap-2">
-                        <div style={{width:10,height:10,borderRadius:'50%',background:COLORS[i%COLORS.length]}} />
+                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: COLORS[i % COLORS.length] }} />
                         {item.name}
                       </div>
                     </td>
-                    <td>₹{item.value.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td>₹{item.value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td>{totalExpenses > 0 ? ((item.value / totalExpenses) * 100).toFixed(1) : 0}%</td>
-                    <td style={{width:'30%'}}>
+                    <td style={{ width: '30%' }}>
                       <div className="progress-bar">
                         <div className="progress-fill" style={{
                           width: `${totalExpenses > 0 ? (item.value / totalExpenses) * 100 : 0}%`,
-                          background: COLORS[i%COLORS.length],
+                          background: COLORS[i % COLORS.length],
                         }} />
                       </div>
                     </td>

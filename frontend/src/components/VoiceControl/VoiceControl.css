@@ -1,0 +1,291 @@
+.voice-control-modal .modal-content {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+}
+
+.voice-control-modal .modal-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.voice-control-modal .modal-title {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+.voice-control-modal .modal-body {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2rem;
+}
+
+.voice-control-modal .modal-footer {
+  background: rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.voice-control-modal .btn-close {
+  filter: invert(1);
+}
+
+/* Voice Visualization */
+.voice-visualization {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.microphone-button {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.microphone-button.listening {
+  background: #ff4757;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7);
+  }
+  70% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 20px rgba(255, 71, 87, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(255, 71, 87, 0);
+  }
+}
+
+/* Sound Wave Animation */
+.sound-wave {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 20px;
+  height: 40px;
+}
+
+.sound-wave span {
+  display: block;
+  width: 6px;
+  height: 20px;
+  background: white;
+  border-radius: 3px;
+  animation: wave 1s infinite ease-in-out;
+}
+
+.sound-wave span:nth-child(1) { animation-delay: 0.1s; }
+.sound-wave span:nth-child(2) { animation-delay: 0.2s; }
+.sound-wave span:nth-child(3) { animation-delay: 0.3s; }
+.sound-wave span:nth-child(4) { animation-delay: 0.4s; }
+.sound-wave span:nth-child(5) { animation-delay: 0.5s; }
+
+@keyframes wave {
+  0%, 100% {
+    height: 10px;
+    opacity: 0.5;
+  }
+  50% {
+    height: 35px;
+    opacity: 1;
+  }
+}
+
+/* Voice Status */
+.voice-status {
+  text-align: center;
+  margin: 1rem 0;
+  font-size: 1.1rem;
+}
+
+.voice-status .processing {
+  color: #ffd700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.voice-status .listening-text {
+  color: #ff6b6b;
+  animation: blink 1s infinite;
+}
+
+.voice-status .ready-text {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Transcript Display */
+.transcript-container {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.transcript {
+  color: white;
+}
+
+.transcript strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.transcript p {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.transcript .interim {
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
+/* Result Display */
+.result-container {
+  border-radius: 10px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.result-container.success {
+  background: rgba(46, 204, 113, 0.2);
+  border: 1px solid #2ecc71;
+}
+
+.result-container.error {
+  background: rgba(231, 76, 60, 0.2);
+  border: 1px solid #e74c3c;
+}
+
+.result-success, .result-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  color: white;
+}
+
+.result-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.result-success .result-icon {
+  color: #2ecc71;
+}
+
+.result-error .result-icon {
+  color: #e74c3c;
+}
+
+.result-success strong, .result-error strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.result-success p, .result-error p {
+  margin: 0;
+  font-size: 0.95rem;
+  opacity: 0.9;
+}
+
+.result-success small {
+  opacity: 0.7;
+}
+
+/* Example Commands */
+.example-commands {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: none !important;
+  color: #333 !important;
+}
+
+.example-commands .card-header {
+  background: rgba(102, 126, 234, 0.1);
+  color: #667eea;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+.example-commands ul {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.example-commands li {
+  margin-bottom: 0.5rem;
+  color: #555;
+}
+
+.example-commands li::marker {
+  color: #667eea;
+}
+
+/* Buttons */
+.voice-control-modal .btn-primary {
+  background: white;
+  color: #667eea;
+  border: none;
+  font-weight: 600;
+}
+
+.voice-control-modal .btn-primary:hover {
+  background: #f0f0f0;
+  color: #667eea;
+}
+
+.voice-control-modal .btn-primary:disabled {
+  background: rgba(255, 255, 255, 0.5);
+  color: rgba(102, 126, 234, 0.7);
+}
+
+.voice-control-modal .btn-secondary {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+}
+
+.voice-control-modal .btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.3);
+  color: white;
+}
+
+.voice-control-modal .btn-danger {
+  background: #ff4757;
+  border: none;
+}
+
+.voice-control-modal .btn-danger:hover {
+  background: #ff6b81;
+}
+
+.voice-control-modal .btn-info {
+  background: #1dd1a1;
+  border: none;
+  color: white;
+}
+
+.voice-control-modal .btn-info:hover {
+  background: #10ac84;
+}

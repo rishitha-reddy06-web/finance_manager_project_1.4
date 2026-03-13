@@ -42,7 +42,8 @@ const Dashboard = () => {
     }
   };
 
-  const totalIncome = summary?.summary?.find(s => s._id === 'income')?.total || 0;
+  const transactedIncome = summary?.summary?.find(s => s._id === 'income')?.total || 0;
+  const totalIncome = transactedIncome > 0 ? transactedIncome : (summary?.monthlyIncome || user?.monthlyIncome || 0);
   const totalExpenses = summary?.summary?.find(s => s._id === 'expense')?.total || 0;
   const netSavings = totalIncome - totalExpenses;
   const pieData = summary?.categoryBreakdown?.map(c => ({
@@ -54,12 +55,12 @@ const Dashboard = () => {
     return (
       <div>
         <div className="stats-grid">
-          {[1,2,3,4].map(i => (
+          {[1, 2, 3, 4].map(i => (
             <div key={i} className="stat-card">
-              <div className="skeleton" style={{width: 52, height: 52, borderRadius: 14}} />
-              <div style={{flex:1}}>
-                <div className="skeleton" style={{width: '60%', height: 14, marginBottom: 8}} />
-                <div className="skeleton" style={{width: '80%', height: 26}} />
+              <div className="skeleton" style={{ width: 52, height: 52, borderRadius: 14 }} />
+              <div style={{ flex: 1 }}>
+                <div className="skeleton" style={{ width: '60%', height: 14, marginBottom: 8 }} />
+                <div className="skeleton" style={{ width: '80%', height: 26 }} />
               </div>
             </div>
           ))}
@@ -79,33 +80,93 @@ const Dashboard = () => {
         </div>
       </div>
 
+      {/* Overall Budget Progress */}
+      {budgets.length > 0 && (
+        <div className="card" style={{ marginBottom: 24 }}>
+          <div className="flex justify-between items-center" style={{ marginBottom: 12 }}>
+            <h3 className="card-title" style={{ margin: 0 }}>Overall Budget Progress</h3>
+            {totalExpenses > budgets.reduce((sum, b) => sum + (Number(b.limit) || 0), 0) && (
+              <span className="badge badge-danger">⚠️ Budget Exceeded</span>
+            )}
+          </div>
+
+          {(() => {
+            const totalBudgetLimit = budgets.reduce((sum, b) => sum + (Number(b.limit) || 0), 0);
+            const percentUsed = totalBudgetLimit > 0 ? Math.round((totalExpenses / totalBudgetLimit) * 100) : 0;
+            const remaining = Math.max(0, totalBudgetLimit - totalExpenses);
+
+            return (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div>
+                    <p className="text-muted text-xs uppercase tracking-wider mb-1">Total Budget</p>
+                    <p className="font-bold text-lg">₹{totalBudgetLimit.toLocaleString('en-IN')}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted text-xs uppercase tracking-wider mb-1">Total Spent</p>
+                    <p className="font-bold text-lg text-danger">₹{totalExpenses.toLocaleString('en-IN')}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted text-xs uppercase tracking-wider mb-1">Remaining</p>
+                    <p className={`font-bold text-lg ${remaining > 0 ? 'text-success' : 'text-danger'}`}>
+                      ₹{remaining.toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted text-xs uppercase tracking-wider mb-1">Used</p>
+                    <p className="font-bold text-lg">{percentUsed}%</p>
+                  </div>
+                </div>
+
+                <div className="progress-bar" style={{ height: 12 }}>
+                  <div
+                    className="progress-fill"
+                    style={{
+                      width: `${Math.min(100, percentUsed)}%`,
+                      background: totalExpenses > totalBudgetLimit ? 'var(--danger)' :
+                        percentUsed > 80 ? 'var(--warning)' : 'var(--secondary)'
+                    }}
+                  />
+                </div>
+
+                {totalExpenses > totalBudgetLimit && (
+                  <p className="text-danger mt-3 text-sm font-medium">
+                    You have exceeded your total budget by ₹{(totalExpenses - totalBudgetLimit).toLocaleString('en-IN')}.
+                  </p>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Stats */}
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-icon" style={{background: 'rgba(16,185,129,0.15)'}}>💰</div>
+          <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.15)' }}>💰</div>
           <div className="stat-content">
             <h3>Total Income</h3>
-            <div className="stat-value text-success">₹{totalIncome.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+            <div className="stat-value text-success">₹{totalIncome.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{background: 'rgba(239,68,68,0.15)'}}>💸</div>
+          <div className="stat-icon" style={{ background: 'rgba(239,68,68,0.15)' }}>💸</div>
           <div className="stat-content">
             <h3>Total Expenses</h3>
-            <div className="stat-value text-danger">₹{totalExpenses.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+            <div className="stat-value text-danger">₹{totalExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{background: 'rgba(99,102,241,0.15)'}}>📈</div>
+          <div className="stat-icon" style={{ background: 'rgba(99,102,241,0.15)' }}>📈</div>
           <div className="stat-content">
             <h3>Net Savings</h3>
             <div className={`stat-value ${netSavings >= 0 ? 'text-success' : 'text-danger'}`}>
-              ₹{netSavings.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+              ₹{netSavings.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{background: 'rgba(245,158,11,0.15)'}}>🎯</div>
+          <div className="stat-icon" style={{ background: 'rgba(245,158,11,0.15)' }}>🎯</div>
           <div className="stat-content">
             <h3>Active Budgets</h3>
             <div className="stat-value">{budgets.length}</div>
@@ -119,17 +180,17 @@ const Dashboard = () => {
         <div className="card">
           <h3 className="card-title">Cash Flow (Last 6 Months)</h3>
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={cashflow} margin={{top: 5, right: 5, left: 5, bottom: 5}}>
+            <BarChart data={cashflow} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="month" tick={{fill: '#94a3b8', fontSize: 12}} />
-              <YAxis tick={{fill: '#94a3b8', fontSize: 12}} />
+              <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} />
+              <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
               <Tooltip
-                contentStyle={{background: '#1e293b', border: '1px solid #334155', borderRadius: 8}}
-                labelStyle={{color: '#f1f5f9'}}
+                contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
+                labelStyle={{ color: '#f1f5f9' }}
               />
               <Legend />
-              <Bar dataKey="income" name="Income" fill="#10b981" radius={[4,4,0,0]} />
-              <Bar dataKey="expenses" name="Expenses" fill="#ef4444" radius={[4,4,0,0]} />
+              <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="expenses" name="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -154,11 +215,11 @@ const Dashboard = () => {
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{background: '#1e293b', border: '1px solid #334155', borderRadius: 8}}
+                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
                   formatter={(val) => [`₹${Number(val).toLocaleString('en-IN')}`, '']}
                 />
                 <Legend
-                  formatter={(value) => <span style={{color:'#94a3b8', fontSize:12}}>{value}</span>}
+                  formatter={(value) => <span style={{ color: '#94a3b8', fontSize: 12 }}>{value}</span>}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -171,15 +232,15 @@ const Dashboard = () => {
       </div>
 
       {/* Savings trend */}
-      <div className="card" style={{marginBottom: 24}}>
+      <div className="card" style={{ marginBottom: 24 }}>
         <h3 className="card-title">Savings Trend</h3>
         <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={cashflow} margin={{top: 5, right: 5, left: 5, bottom: 5}}>
+          <LineChart data={cashflow} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-            <XAxis dataKey="month" tick={{fill: '#94a3b8', fontSize: 12}} />
-            <YAxis tick={{fill: '#94a3b8', fontSize: 12}} />
+            <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} />
+            <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
             <Tooltip
-              contentStyle={{background: '#1e293b', border: '1px solid #334155', borderRadius: 8}}
+              contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
             />
             <Line
               type="monotone"
@@ -187,8 +248,8 @@ const Dashboard = () => {
               name="Savings"
               stroke="#6366f1"
               strokeWidth={2}
-              dot={{fill: '#6366f1', r: 4}}
-              activeDot={{r: 6}}
+              dot={{ fill: '#6366f1', r: 4 }}
+              activeDot={{ r: 6 }}
             />
           </LineChart>
         </ResponsiveContainer>
@@ -211,7 +272,7 @@ const Dashboard = () => {
                   </div>
                   <div className="tx-right">
                     <p className={`tx-amount ${tx.type === 'income' ? 'text-success' : 'text-danger'}`}>
-                      {tx.type === 'income' ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      {tx.type === 'income' ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                     <p className="tx-date">{new Date(tx.date).toLocaleDateString()}</p>
                   </div>
@@ -219,7 +280,7 @@ const Dashboard = () => {
               ))}
             </div>
           ) : (
-            <p className="text-muted" style={{textAlign:'center', padding: '16px 0'}}>
+            <p className="text-muted" style={{ textAlign: 'center', padding: '16px 0' }}>
               No transactions yet
             </p>
           )}
@@ -232,9 +293,9 @@ const Dashboard = () => {
             <div className="budget-list">
               {budgets.slice(0, 5).map(b => (
                 <div key={b._id} className="budget-item">
-                  <div className="flex justify-between" style={{marginBottom: 6}}>
-                    <span style={{fontSize: 14, fontWeight: 500}}>{b.category}</span>
-                    <span style={{fontSize: 13, color: 'var(--text-secondary)'}}>
+                  <div className="flex justify-between" style={{ marginBottom: 6 }}>
+                    <span style={{ fontSize: 14, fontWeight: 500 }}>{b.category}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                       ₹{b.spent.toLocaleString('en-IN')} / ₹{Number(b.limit).toLocaleString('en-IN')}
                     </span>
                   </div>
@@ -248,14 +309,14 @@ const Dashboard = () => {
                       }}
                     />
                   </div>
-                  <p style={{fontSize: 11, color: 'var(--text-secondary)', marginTop: 4}}>
+                  <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
                     {Math.round((b.spent / b.limit) * 100)}% used
                   </p>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-muted" style={{textAlign:'center', padding: '16px 0'}}>
+            <p className="text-muted" style={{ textAlign: 'center', padding: '16px 0' }}>
               No budgets set
             </p>
           )}

@@ -5,8 +5,10 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 import { toast } from 'react-toastify';
+import { useAuth } from '../context/AuthContext';
 
 const Predictions = () => {
+  const { user } = useAuth();
   const [expensePred, setExpensePred] = useState(null);
   const [savings, setSavings] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
@@ -14,7 +16,7 @@ const Predictions = () => {
 
   useEffect(() => {
     fetchAll();
-  }, []);
+  }, [user?.monthlyIncome, user?.savingsGoal]);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -41,7 +43,7 @@ const Predictions = () => {
     <div className="fade-in">
       <div className="page-header"><h1 className="page-title">AI Predictions</h1></div>
       <div className="stats-grid">
-        {[1,2,3].map(i => <div key={i} className="card skeleton" style={{height: 100}} />)}
+        {[1, 2, 3].map(i => <div key={i} className="card skeleton" style={{ height: 100 }} />)}
       </div>
     </div>
   );
@@ -60,31 +62,31 @@ const Predictions = () => {
       {savings && (
         <div className="stats-grid">
           <div className="stat-card">
-            <div className="stat-icon" style={{background:'rgba(99,102,241,0.15)'}}>💰</div>
+            <div className="stat-icon" style={{ background: 'rgba(99,102,241,0.15)' }}>💰</div>
             <div className="stat-content">
               <h3>Avg Monthly Income</h3>
-              <div className="stat-value">₹{savings.avgMonthlyIncome?.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+              <div className="stat-value">₹{savings.avgMonthlyIncome?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-icon" style={{background:'rgba(239,68,68,0.15)'}}>💸</div>
+            <div className="stat-icon" style={{ background: 'rgba(239,68,68,0.15)' }}>💸</div>
             <div className="stat-content">
               <h3>Avg Monthly Expenses</h3>
-              <div className="stat-value text-danger">₹{savings.avgMonthlyExpenses?.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+              <div className="stat-value text-danger">₹{savings.avgMonthlyExpenses?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-icon" style={{background:'rgba(16,185,129,0.15)'}}>📈</div>
+            <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.15)' }}>📈</div>
             <div className="stat-content">
               <h3>Avg Monthly Savings</h3>
               <div className={`stat-value ${savings.avgMonthlySavings >= 0 ? 'text-success' : 'text-danger'}`}>
-                ₹{savings.avgMonthlySavings?.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                ₹{savings.avgMonthlySavings?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             </div>
           </div>
           {savings.monthsToGoal && (
             <div className="stat-card">
-              <div className="stat-icon" style={{background:'rgba(245,158,11,0.15)'}}>🎯</div>
+              <div className="stat-icon" style={{ background: 'rgba(245,158,11,0.15)' }}>🎯</div>
               <div className="stat-content">
                 <h3>Months to Goal</h3>
                 <div className="stat-value text-warning">{savings.monthsToGoal}</div>
@@ -99,14 +101,14 @@ const Predictions = () => {
         {expensePred?.predictions && (
           <div className="card">
             <h3 className="card-title">📊 3-Month Expense Forecast</h3>
-            <p className="text-muted" style={{fontSize: 13, marginBottom: 16}}>{expensePred.message}</p>
+            <p className="text-muted" style={{ fontSize: 13, marginBottom: 16 }}>{expensePred.message}</p>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={expensePred.predictions}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="month" tick={{fill:'#94a3b8', fontSize:12}} />
-                <YAxis tick={{fill:'#94a3b8', fontSize:12}} />
-                <Tooltip contentStyle={{background:'#1e293b', border:'1px solid #334155', borderRadius:8}} />
-                <Bar dataKey="predicted" name="Predicted Expenses" fill="#6366f1" radius={[4,4,0,0]} />
+                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }} />
+                <Bar dataKey="predicted" name="Predicted Expenses" fill="#6366f1" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -119,13 +121,13 @@ const Predictions = () => {
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={savings.projections}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="month" tick={{fill:'#94a3b8', fontSize:10}} interval={1} />
-                <YAxis tick={{fill:'#94a3b8', fontSize:12}} />
-                <Tooltip contentStyle={{background:'#1e293b', border:'1px solid #334155', borderRadius:8}} />
+                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 10 }} interval={1} />
+                <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }} />
                 <Legend />
                 {savings.savingsGoal > 0 && (
                   <ReferenceLine y={savings.savingsGoal} stroke="#f59e0b"
-                    strokeDasharray="5 5" label={{value:'Goal', fill:'#f59e0b', fontSize:11}} />
+                    strokeDasharray="5 5" label={{ value: 'Goal', fill: '#f59e0b', fontSize: 11 }} />
                 )}
                 <Line type="monotone" dataKey="cumulativeSavings" name="Cumulative Savings"
                   stroke="#10b981" strokeWidth={2} dot={false} />
@@ -139,15 +141,15 @@ const Predictions = () => {
 
       {/* Goal progress */}
       {savings?.savingsGoal > 0 && savings?.projections && (
-        <div className="card" style={{marginBottom: 24}}>
+        <div className="card" style={{ marginBottom: 24 }}>
           <h3 className="card-title">🎯 Savings Goal Progress</h3>
-          <div className="flex items-center gap-4" style={{marginBottom: 12}}>
-            <span style={{fontSize: 14}}>Goal: ₹{savings.savingsGoal.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+          <div className="flex items-center gap-4" style={{ marginBottom: 12 }}>
+            <span style={{ fontSize: 14 }}>Goal: ₹{savings.savingsGoal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             {savings.monthsToGoal && (
               <span className="badge badge-warning">~{savings.monthsToGoal} months to reach goal</span>
             )}
           </div>
-          <div className="progress-bar" style={{height: 12}}>
+          <div className="progress-bar" style={{ height: 12 }}>
             <div className="progress-fill" style={{
               width: `${Math.min(100, ((savings.avgMonthlySavings || 0) / savings.savingsGoal) * 100 * 3)}%`,
               background: 'linear-gradient(90deg, var(--primary), var(--secondary))',
@@ -159,23 +161,23 @@ const Predictions = () => {
       {/* Recommendations */}
       <div className="card">
         <h3 className="card-title">💡 Personalized Recommendations</h3>
-        <div style={{display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8}}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
           {recommendations.map((rec, i) => (
             <div key={i} className="rec-item" style={{
               padding: 16, borderRadius: 10,
               background: 'var(--bg)',
               borderLeft: `4px solid ${recTypeColors[rec.type] || 'var(--primary)'}`,
             }}>
-              <div className="flex items-center gap-3" style={{marginBottom: 6}}>
-                <span style={{fontSize: 18}}>{recTypeIcons[rec.type]}</span>
-                <strong style={{fontSize: 14, color: 'var(--text-primary)'}}>{rec.category}</strong>
+              <div className="flex items-center gap-3" style={{ marginBottom: 6 }}>
+                <span style={{ fontSize: 18 }}>{recTypeIcons[rec.type]}</span>
+                <strong style={{ fontSize: 14, color: 'var(--text-primary)' }}>{rec.category}</strong>
                 {rec.potentialSavings > 0 && (
-                  <span className="badge badge-income" style={{marginLeft: 'auto'}}>
+                  <span className="badge badge-income" style={{ marginLeft: 'auto' }}>
                     Save ₹{Number(rec.potentialSavings).toLocaleString('en-IN')}/mo
                   </span>
                 )}
               </div>
-              <p style={{fontSize: 13, color: 'var(--text-secondary)'}}>{rec.message}</p>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{rec.message}</p>
             </div>
           ))}
         </div>

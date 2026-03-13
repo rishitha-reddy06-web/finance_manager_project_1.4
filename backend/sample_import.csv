@@ -1,0 +1,36 @@
+date,description,amount,type,category,payment_method
+2024-01-01,Opening Balance,50000,income,Investment,bank_transfer
+2024-01-05,Monthly Salary Deposit,75000,income,Salary,bank_transfer
+2024-01-06,Zomato Food Order,850,expense,Food & Dining,card
+2024-01-07,Uber Ride,350,expense,Transport,upi
+2024-01-08,Amazon Purchase,2500,expense,Shopping,card
+2024-01-09,Electricity Bill,1200,expense,Utilities,bank_transfer
+2024-01-10,Gym Membership,500,expense,Entertainment,card
+2024-01-12,Freelance Project Payment,12000,income,Freelance,bank_transfer
+2024-01-15,Medical Clinic,1500,expense,Healthcare,card
+2024-01-16,Hotel Stay,3500,expense,Housing,card
+2024-01-18,Flight Ticket,8000,expense,Travel,card
+2024-01-20,Netflix Subscription,499,expense,Entertainment,card
+2024-01-22,Transfer to Savings,25000,expense,Investment,bank_transfer
+2024-01-25,Bonus Received,10000,income,Salary,bank_transfer
+2024-01-28,Insurance Premium,5000,expense,Insurance,bank_transfer
+2024-02-01,Monthly Salary Deposit,75000,income,Salary,bank_transfer
+2024-02-03,Restaurant Dinner,1200,expense,Food & Dining,card
+2024-02-05,Petrol Fuel,1500,expense,Transport,card
+2024-02-08,Online Shopping,4200,expense,Shopping,card
+2024-02-10,Water Bill,800,expense,Utilities,bank_transfer
+2024-02-12,Doctor Consultation,600,expense,Healthcare,cash
+2024-02-15,School Fees,5000,expense,Education,bank_transfer
+2024-02-18,Movie Theater,400,expense,Entertainment,card
+2024-02-20,Gift to Friend,1000,expense,Gifts & Donations,upi
+2024-02-25,Bank Service Charge,99,expense,Bank Charges,bank_transfer
+2024-03-01,Monthly Salary Deposit,75000,income,Salary,bank_transfer
+2024-03-05,Coffee and Snacks,250,expense,Food & Dining,card
+2024-03-07,Taxi Ride,450,expense,Transport,upi
+2024-03-10,Streaming Service,399,expense,Entertainment,card
+2024-03-12,Pharmacy Purchase,200,expense,Healthcare,card
+2024-03-15,Mobile Recharge,299,expense,Utilities,upi
+2024-03-18,Consultation Income,5000,income,Freelance,bank_transfer
+2024-03-20,EMI Payment,15000,expense,EMI & Loans,bank_transfer
+2024-03-25,Charity Donation,2000,expense,Gifts & Donations,bank_transfer
+2024-03-28,Interest Earned,450,income,Investment,bank_transfer
