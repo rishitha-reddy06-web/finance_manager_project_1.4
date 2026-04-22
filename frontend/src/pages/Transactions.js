@@ -2,14 +2,17 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import PdfImportModal from '../components/PdfImportModal';
+import ReceiptScanModal from '../components/ReceiptScanModal';
 import VoiceControlPanel from '../components/VoiceControlPanel';
+import ApprovalModal from '../components/ApprovalModal';
 import { useAuth } from '../context/AuthContext';
+import io from 'socket.io-client';
 
 const CATEGORIES = [
   'Food & Dining', 'Transport', 'Shopping', 'Entertainment', 'Healthcare',
   'Utilities', 'Housing', 'Education', 'Travel', 'Investment',
   'Salary', 'Freelance', 'Business', 'Insurance', 'EMI & Loans',
-  'Subscriptions', 'Gifts & Donations', 'Bank Charges', 'Other',
+  'Subscriptions', 'Gifts & Donations', 'Personal Care', 'Bank Charges', 'Other',
 ];
 
 const TransactionModal = ({ tx, onClose, onSave }) => {
@@ -108,27 +111,68 @@ const TransactionModal = ({ tx, onClose, onSave }) => {
 const Transactions = () => {
   const { user } = useAuth();
   const [transactions, setTransactions] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [pages, setPages] = useState(1);
-  const [page, setPage] = useState(1);
   const [modal, setModal] = useState(null);
   const [pdfImportModal, setPdfImportModal] = useState(false);
-  const [filters, setFilters] = useState({ type: '', category: '', search: '', startDate: '', endDate: '' });
+  const [receiptScanModal, setReceiptScanModal] = useState(false);
+  const [filters, setFilters] = useState({ type: '', category: '', search: '', startDate: '', endDate: '', paymentMethod: '' });
   const [loading, setLoading] = useState(true);
+  const [approvalData, setApprovalData] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
+  // Initial fetch and fetch on filter change
+  useEffect(() => {
+    fetchTransactions(1);
+    setCurrentPage(1);
+  }, [filters]);
+
+  // Fetch when page changes
+  useEffect(() => {
+    fetchTransactions(currentPage);
+  }, [currentPage]);
 
   useEffect(() => {
-    fetchTransactions();
-  }, [page, filters]);
+    // Setup Autonomous Listener (Socket.io)
+    const socket = io('http://localhost:5000');
+    if (user) {
+      socket.emit('join', user.id || user._id);
+      
+      socket.on('new_detection_for_approval', (detection) => {
+        setApprovalData(detection);
+      });
+      
+      socket.on('new_transaction_autonomous', (newTx) => {
+        toast.info(`🤖 AI Background Sync: Added ₹${newTx.amount} from SMS`, {
+          position: "top-center",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          theme: "colored",
+        });
+        fetchTransactions(currentPage);
+      });
+    }
 
-  const fetchTransactions = async () => {
+    return () => socket.disconnect();
+  }, [user]);
+
+  const fetchTransactions = async (pageToFetch = 1) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page, limit: 15, ...filters });
-      Object.keys(filters).forEach(k => !filters[k] && params.delete(k));
-      const res = await axios.get(`/api/transactions?${params}`);
+      const { type, category, search, startDate, endDate, paymentMethod } = filters;
+      let url = `/api/transactions?page=${pageToFetch}&limit=10`;
+      if (type) url += `&type=${type}`;
+      if (category) url += `&category=${category}`;
+      if (search) url += `&search=${search}`;
+      if (startDate) url += `&startDate=${startDate}`;
+      if (endDate) url += `&endDate=${endDate}`;
+      if (paymentMethod) url += `&paymentMethod=${paymentMethod}`;
+
+      const res = await axios.get(url);
       setTransactions(res.data.data);
-      setTotal(res.data.total);
-      setPages(res.data.pages);
+      setTotalPages(res.data.pages || 1);
+      setTotalCount(res.data.total || 0);
     } catch (err) {
       toast.error('Failed to load transactions');
     } finally {
@@ -141,7 +185,7 @@ const Transactions = () => {
     try {
       await axios.delete(`/api/transactions/${id}`);
       toast.success('Transaction deleted');
-      fetchTransactions();
+      fetchTransactions(currentPage);
     } catch (err) {
       toast.error('Failed to delete');
     }
@@ -155,8 +199,21 @@ const Transactions = () => {
     }, 1500);
   };
 
+  const handleReceiptScanSuccess = () => {
+    setReceiptScanModal(false);
+    setTimeout(() => fetchTransactions(), 500);
+  };
+
   return (
     <div className="fade-in">
+      {approvalData && (
+        <ApprovalModal 
+          data={approvalData} 
+          onApproved={() => { setApprovalData(null); fetchTransactions(); }}
+          onDismiss={() => setApprovalData(null)}
+        />
+      )}
+
       {modal !== undefined && modal !== null && (
         <TransactionModal
           tx={modal === 'new' ? null : modal}
@@ -172,12 +229,26 @@ const Transactions = () => {
         />
       )}
 
+      {receiptScanModal && (
+        <ReceiptScanModal
+          onClose={() => setReceiptScanModal(false)}
+          onSuccess={handleReceiptScanSuccess}
+        />
+      )}
+
       <div className="page-header">
         <div>
           <h1 className="page-title">Transactions</h1>
-          <p className="page-subtitle">{total} total transactions</p>
+          <p className="page-subtitle">{totalCount.toLocaleString()} total transactions</p>
         </div>
         <div className="flex gap-3">
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setReceiptScanModal(true)}
+            title="Scan a receipt image using OCR"
+          >
+            📸 Scan Receipt
+          </button>
           <button
             className="btn btn-secondary btn-sm"
             onClick={() => setPdfImportModal(true)}
@@ -211,8 +282,17 @@ const Transactions = () => {
             onChange={e => setFilters({ ...filters, startDate: e.target.value })} />
           <input type="date" className="form-input" value={filters.endDate}
             onChange={e => setFilters({ ...filters, endDate: e.target.value })} />
+          <select className="form-select" value={filters.paymentMethod}
+            onChange={e => setFilters({ ...filters, paymentMethod: e.target.value })}>
+            <option value="">All Payments</option>
+            <option value="upi">UPI</option>
+            <option value="card">Card</option>
+            <option value="bank_transfer">Bank Transfer</option>
+            <option value="cash">Cash</option>
+            <option value="other">Other</option>
+          </select>
           <button className="btn btn-secondary btn-sm"
-            onClick={() => setFilters({ type: '', category: '', search: '', startDate: '', endDate: '' })}>
+            onClick={() => setFilters({ type: '', category: '', search: '', startDate: '', endDate: '', paymentMethod: '' })}>
             Clear
           </button>
         </div>
@@ -278,14 +358,37 @@ const Transactions = () => {
         </table>
       </div>
 
-      {/* Pagination */}
-      {pages > 1 && (
-        <div className="pagination">
-          <button className="btn btn-secondary btn-sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
-            ← Prev
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="pagination-controls" style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          gap: '1.5rem',
+          marginTop: '2rem',
+          padding: '1rem',
+          background: 'rgba(30, 41, 59, 0.5)',
+          borderRadius: '12px'
+        }}>
+          <button 
+            className="btn btn-secondary btn-sm" 
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(prev => prev - 1)}
+            style={{ minWidth: '100px' }}
+          >
+            ← Previous
           </button>
-          <span className="text-muted">Page {page} of {pages}</span>
-          <button className="btn btn-secondary btn-sm" onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages}>
+          
+          <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 500 }}>
+            Page <span style={{ color: 'var(--text-primary)' }}>{currentPage}</span> of <span style={{ color: 'var(--text-primary)' }}>{totalPages}</span>
+          </span>
+
+          <button 
+            className="btn btn-secondary btn-sm" 
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(prev => prev + 1)}
+            style={{ minWidth: '100px' }}
+          >
             Next →
           </button>
         </div>

@@ -37,6 +37,7 @@ const TransactionSchema = new mongoose.Schema({
       'EMI & Loans',
       'Subscriptions',
       'Gifts & Donations',
+      'Personal Care',
       'Bank Charges',
       'Other',
     ],
@@ -68,7 +69,7 @@ const TransactionSchema = new mongoose.Schema({
   importSource: {
     type: String,
     default: 'manual',
-    enum: ['manual', 'csv', 'pdf', 'voice'],
+    enum: ['manual', 'csv', 'pdf', 'voice', 'receipt'],
   },
 }, {
   timestamps: true,

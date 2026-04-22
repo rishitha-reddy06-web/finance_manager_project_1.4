@@ -18,7 +18,8 @@ function parseAmount(value, options = {}) {
   const {
     allowNegative = true,
     preferPositive = false,
-    defaultValue = null
+    defaultValue = null,
+    validateRange = false  // Only validate range if explicitly enabled (for receipt scanning)
   } = options;
 
   if (!value || typeof value !== 'string') {
@@ -35,7 +36,14 @@ function parseAmount(value, options = {}) {
     return { amount: defaultValue, isNegative: false, confidence: 0 };
   }
 
-  // Detect if amount is negative
+  // Remove currency symbols and common prefixes FIRST
+  str = str.replace(/^[\₹$€£¥]\s*/, '');  // Currency prefix
+  str = str.replace(/^USD\s*/i, '');
+  str = str.replace(/^EUR\s*/i, '');
+  str = str.replace(/^GBP\s*/i, '');
+  str = str.replace(/^INR\s*/i, '');
+
+  // Detect if amount is negative (AFTER currency removal)
   let isNegative = false;
   let negativeReason = null;
 
@@ -45,7 +53,7 @@ function parseAmount(value, options = {}) {
     negativeReason = 'parentheses';
     str = str.slice(1, -1); // Remove parentheses
   }
-  // Check for minus sign prefix
+  // Check for minus sign prefix (now catches ₹-500 correctly)
   else if (/^-\s*[\d,.]/.test(str)) {
     isNegative = true;
     negativeReason = 'minus';
@@ -63,13 +71,6 @@ function parseAmount(value, options = {}) {
     negativeReason = 'debit';
     str = str.replace(/\s*DR$/i, '');
   }
-
-  // Remove currency symbols and common prefixes
-  str = str.replace(/^[\₹$€£¥₹]\s*/, '');  // Currency prefix
-  str = str.replace(/^USD\s*/i, '');
-  str = str.replace(/^EUR\s*/i, '');
-  str = str.replace(/^GBP\s*/i, '');
-  str = str.replace(/^INR\s*/i, '');
 
   // Detect number format
   const format = detectNumberFormat(str);
@@ -94,6 +95,14 @@ function parseAmount(value, options = {}) {
   // Handle invalid parsing
   if (isNaN(amount) || amount === null) {
     return { amount: defaultValue, isNegative: false, confidence: 0 };
+  }
+
+  // Validate amount range only if explicitly enabled (for receipt scanning)
+  if (validateRange) {
+    const validationResult = validateAmountRange(amount, format);
+    if (!validationResult.valid) {
+      return { amount: defaultValue, isNegative: false, confidence: 0, error: validationResult.reason };
+    }
   }
 
   // Apply negative sign if detected from format
@@ -122,9 +131,10 @@ function detectNumberFormat(str) {
   // Clean the string for analysis
   const clean = str.replace(/[^\d,.]/g, '');
   
-  // Indian format: 1,00,000 (comma after 3 digits, then every 2)
-  // Examples: 1,00,000 | 10,00,000 | 1,00,00,000
-  if (/^\d{1,2}(,\d{2})+\d{3}(\.\d+)?$/.test(clean)) {
+  // Indian format: 1,00,000 or 10,00,000 or 1,00,00,000
+  // Pattern: 1-2 digits, then pairs of 2 digits separated by commas, then 3 digits
+  // Examples: 1,00,000 | 10,00,000 | 1,23,45,678 | 1,00,000.50
+  if (/^\d{1,2}(,\d{2})*,\d{3}(\.\d+)?$/.test(clean)) {
     return 'indian';
   }
   
@@ -150,6 +160,41 @@ function detectNumberFormat(str) {
   }
 
   return 'unknown';
+}
+
+/**
+ * Validate that amount is in realistic range
+ * Catches OCR errors like ₹43210 (misread for ₹300)
+ * @param {number} amount - The parsed amount
+ * @param {string} format - The detected number format
+ * @returns {Object} - { valid: boolean, reason?: string }
+ */
+function validateAmountRange(amount, format) {
+  // Maximum reasonable amounts by format
+  // Indian: up to 1 crore (100,000,000) for business transactions
+  // Other formats: up to 10 million for bank transactions
+  const maxAmount = format === 'indian' ? 100000000 : 10000000;
+  const minAmount = 0.01; // At least 1 paise/cent
+
+  if (amount < minAmount) {
+    return { valid: false, reason: 'Amount too small' };
+  }
+
+  if (amount > maxAmount) {
+    return { valid: false, reason: `Amount exceeds ${maxAmount} (likely OCR error)` };
+  }
+
+  // Detect suspicious OCR patterns in Indian context
+  // Pattern: 5 or 6 digit numbers starting with 4-5 are often OCR errors of 3-digit amounts
+  if (format === 'indian' && /^[45]\d{4}$/.test(Math.round(amount).toString())) {
+    // Additional check: if it ends in suspicious digits, likely OCR error
+    const str = Math.round(amount).toString();
+    if (/[01]{2,}$/.test(str)) {  // Ends with multiple 0s or 1s
+      return { valid: false, reason: 'Suspicious OCR pattern detected (e.g., 43210 for 300)' };
+    }
+  }
+
+  return { valid: true };
 }
 
 /**
@@ -623,6 +668,7 @@ module.exports = {
   parseCSVRow,
   parseDate,
   detectNumberFormat,
+  validateAmountRange,
   parseIndianNumber,
   parseEuropeanNumber,
   parseUSNumber

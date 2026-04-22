@@ -46,6 +46,79 @@ router.get('/', protect, async (req, res) => {
   }
 });
 
+// @route   POST /api/budgets/bulk
+// @desc    Create budgets for multiple months
+// @access  Private
+router.post('/bulk', protect, async (req, res) => {
+  try {
+    const { category, limit, periods, color, range } = req.body; 
+    // periods: [{ month, year }]
+    // range: { fromMonth, fromYear, toMonth, toYear }
+    
+    let targetPeriods = periods || [];
+
+    if (range) {
+      const { fromMonth, fromYear, toMonth, toYear } = range;
+      let currMonth = parseInt(fromMonth);
+      let currYear = parseInt(fromYear);
+      const endMonth = parseInt(toMonth);
+      const endYear = parseInt(toYear);
+
+      while (currYear < endYear || (currYear === endYear && currMonth <= endMonth)) {
+        targetPeriods.push({ month: currMonth, year: currYear });
+        currMonth++;
+        if (currMonth > 12) {
+          currMonth = 1;
+          currYear++;
+        }
+      }
+    }
+    
+    if (targetPeriods.length === 0) {
+      return res.status(400).json({ success: false, message: 'No periods or range provided' });
+    }
+
+    const createdBudgets = [];
+    const errors = [];
+
+    for (const period of targetPeriods) {
+      const { month, year } = period;
+      
+      const existingBudget = await Budget.findOne({
+        user: req.user.id,
+        category,
+        month: parseInt(month),
+        year: parseInt(year),
+      });
+
+      if (existingBudget) {
+        errors.push(`Budget for "${category}" in ${month}/${year} already exists`);
+        continue;
+      }
+
+      const budget = await Budget.create({
+        user: req.user.id,
+        name: category,
+        category,
+        limit: parseFloat(limit),
+        month: parseInt(month),
+        year: parseInt(year),
+        color: color || '#6366f1',
+      });
+      createdBudgets.push(budget);
+    }
+
+    res.status(201).json({ 
+      success: true, 
+      count: createdBudgets.length, 
+      data: createdBudgets,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // @route   POST /api/budgets
 // @desc    Create budget
 // @access  Private
@@ -122,6 +195,61 @@ router.delete('/:id', protect, async (req, res) => {
 
     await budget.deleteOne();
     res.json({ success: true, message: 'Budget deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// @route   POST /api/budgets/batch
+// @desc    Create/Update multiple categories for a month or range
+// @access  Private
+router.post('/batch', protect, async (req, res) => {
+  try {
+    const { month, year, budgets, range } = req.body; 
+    
+    if (!budgets || !Array.isArray(budgets)) {
+      return res.status(400).json({ success: false, message: 'Budgets must be an array' });
+    }
+
+    let targetPeriods = [];
+    if (range) {
+      const { fromMonth, fromYear, toMonth, toYear } = range;
+      let currMonth = parseInt(fromMonth);
+      let currYear = parseInt(fromYear);
+      const endMonth = parseInt(toMonth);
+      const endYear = parseInt(toYear);
+
+      while (currYear < endYear || (currYear === endYear && currMonth <= endMonth)) {
+        targetPeriods.push({ month: currMonth, year: currYear });
+        currMonth++;
+        if (currMonth > 12) {
+          currMonth = 1;
+          currYear++;
+        }
+      }
+    } else {
+      targetPeriods.push({ month: parseInt(month), year: parseInt(year) });
+    }
+
+    const results = [];
+    for (const period of targetPeriods) {
+      for (const item of budgets) {
+        if (item.limit === '' || item.limit === null || item.limit === undefined) continue;
+
+        const budget = await Budget.findOneAndUpdate(
+          { user: req.user.id, category: item.category, month: period.month, year: period.year },
+          { 
+            limit: parseFloat(item.limit),
+            name: item.category,
+            color: item.color || '#6366f1'
+          },
+          { upsert: true, new: true, runValidators: true }
+        );
+        results.push(budget);
+      }
+    }
+
+    res.json({ success: true, count: results.length, data: results });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

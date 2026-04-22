@@ -20,12 +20,16 @@ router.post('/register', [
   const { name, email, password } = req.body;
 
   try {
+    console.log(`Registration attempt for: ${email}`);
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ success: false, message: 'User already exists' });
+      console.log(`Registration failed: User ${email} already exists`);
+      return res.status(400).json({ success: false, message: 'User with this email already exists' });
     }
 
+    console.log(`Creating user in database...`);
     const user = await User.create({ name, email, password });
+    console.log(`User created successfully: ${user._id}`);
     const token = user.getSignedJwtToken();
 
     res.status(201).json({
@@ -60,16 +64,21 @@ router.post('/login', [
   const { email, password } = req.body;
 
   try {
+    console.log(`Login attempt for: ${email}`);
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      console.log(`Login failed: User ${email} not found`);
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
+    console.log(`Checking password match...`);
     const isMatch = await user.matchPassword(password);
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      console.log(`Login failed: Incorrect password for ${email}`);
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
+    console.log(`Login successful for: ${email}`);
     const token = user.getSignedJwtToken();
 
     res.json({

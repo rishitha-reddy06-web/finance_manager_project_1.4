@@ -9,3 +9,21 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Windows reserved filenames
+nul
+backend/nul
+
+# Test files
+backend/test-*.js
+backend/debug-*.js
+backend/quick-test.js
+backend/scratch/
+QUICK_TEST_DEFINITIVE.js
+RECEIPT_DETECTION_FIXES_VISUAL.js
+SETUP_DEFINITIVE_PARSER.sh
+backend/RECEIPT_DETECTION_ANALYSIS.js
+backend/package.json.updated
+
+# Large binary training data
+*.traineddata

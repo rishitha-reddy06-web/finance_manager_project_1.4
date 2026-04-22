@@ -37,11 +37,15 @@ class PdfParserService {
     };
 
     this.creditKeywords = [
-      'credit', 'credited', 'deposit', 'salary', 'refund', 'interest', 'transfer in', 'received', 'neft cr', 'rtgs cr', 'imps cr', 'upi cr'
+      'credit', 'credited', 'deposit', 'salary', 'refund', 'interest', 'transfer in', 'received', 'neft cr', 'rtgs cr', 'imps cr', 'upi cr', 'upi credit', 'gpay credit', 'phonepe credit', 'paytm credit', 'wallet credit', 'qr received', 'collect request'
     ];
 
     this.debitKeywords = [
-      'debit', 'debited', 'withdrawal', 'purchase', 'payment', 'bank charge', 'fee', 'charges', 'transfer out', 'neft dr', 'rtgs dr', 'imps dr', 'upi dr'
+      'debit', 'debited', 'withdrawal', 'purchase', 'payment', 'bank charge', 'fee', 'charges', 'transfer out', 'neft dr', 'rtgs dr', 'imps dr', 'upi dr', 'upi debit', 'gpay debit', 'phonepe debit', 'paytm debit', 'wallet debit', 'qr payment', 'send money', 'collect request paid'
+    ];
+
+    this.upiKeywords = [
+      'upi', 'gpay', 'google pay', 'phonepe', 'paytm', 'bhim', 'amazon pay', 'mobikwik', 'freecharge', 'airtel pay', 'jio pay', 'whatsapp pay', 'scan', 'qr', '@upi', '@bank'
     ];
   }
 
@@ -116,13 +120,16 @@ class PdfParserService {
         statementFormat,
         parser: usedParser,
         rawText: text.substring(0, 1000),
+        isScanned: false,
       };
     } catch (error) {
       console.error('PDF parsing error:', error);
+      const isScannedError = error.message.includes('scanned') || error.message.includes('Unable to read');
       return {
         success: false,
         error: error.message,
         transactions: [],
+        isScanned: isScannedError,
       };
     }
   }
@@ -169,6 +176,32 @@ class PdfParserService {
     });
 
     return fullText;
+  }
+
+  async checkIfScanned(filePath) {
+    try {
+      const dataBuffer = fs.readFileSync(filePath);
+      const pdfData = await pdf(dataBuffer);
+      const text = pdfData.text || '';
+      const pageCount = pdfData.numpages || 0;
+      
+      if (!text || text.trim().length === 0) {
+        const jsonData = await this.parseWithPdf2json(filePath);
+        const rawText = this.getRawTextFromPdf2json(jsonData);
+        
+        if (!rawText || rawText.trim().length === 0) {
+          return { isScanned: true, isEncrypted: false, pageCount, reason: 'No text content detected. PDF may contain only images.' };
+        }
+        return { isScanned: false, isEncrypted: false, pageCount };
+      }
+      
+      return { isScanned: false, isEncrypted: false, pageCount };
+    } catch (error) {
+      if (error.message?.includes('encrypted') || error.message?.includes('password')) {
+        return { isScanned: false, isEncrypted: true, pageCount: 0, reason: 'PDF is password protected' };
+      }
+      throw error;
+    }
   }
 
   detectBank(text) {
@@ -697,6 +730,7 @@ class PdfParserService {
 
       const type = tx.type === 'income' ? 'income' : 'expense';
       const category = this.categorizeTransaction(normalizedDescription, type);
+      const paymentMethod = this.detectPaymentMethod(normalizedDescription, type);
 
       valid.push({
         date: tx.date,
@@ -704,7 +738,7 @@ class PdfParserService {
         amount: parseFloat(Number(tx.amount).toFixed(2)),
         type,
         category,
-        paymentMethod: 'bank_transfer',
+        paymentMethod,
         importSource: 'pdf',
       });
     }
@@ -777,6 +811,30 @@ class PdfParserService {
 
   getSupportedBanks() {
     return Object.keys(this.bankPatterns).map((bank) => bank.charAt(0).toUpperCase() + bank.slice(1));
+  }
+
+  detectPaymentMethod(description, type) {
+    const desc = description.toLowerCase();
+    
+    for (const keyword of this.upiKeywords) {
+      if (desc.includes(keyword)) {
+        return 'upi';
+      }
+    }
+    
+    if (/neft|rtgs|imps|transfer|bank.*transfer/i.test(desc)) {
+      return 'bank_transfer';
+    }
+    
+    if (/cash|atm|withdrawal/i.test(desc)) {
+      return 'cash';
+    }
+    
+    if (/card|credit.*card|debit.*card|pos|swipe/i.test(desc)) {
+      return 'card';
+    }
+    
+    return 'other';
   }
 }
 

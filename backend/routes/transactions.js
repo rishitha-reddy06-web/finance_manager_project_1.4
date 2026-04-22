@@ -8,6 +8,23 @@ const Budget = require('../models/Budget');
 const Alert = require('../models/Alert');
 const { protect } = require('../middleware/auth');
 const pdfParserService = require('../services/pdfParserService');
+const receiptOcrService = require('../services/receiptOcrService');
+const enhancedReceiptService = require('../services/enhancedReceiptService');
+
+// @route   DELETE /api/transactions/clear/all
+// @desc    Clear all financial history
+// @access  Private
+router.delete('/clear/all', protect, async (req, res) => {
+  try {
+    await Promise.all([
+      Transaction.deleteMany({ user: req.user.id }),
+      Budget.deleteMany({ user: req.user.id })
+    ]);
+    res.json({ success: true, message: 'All financial data cleared' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -30,16 +47,30 @@ const upload = multer({
   }
 });
 
+const imageUpload = multer({
+  dest: uploadsDir,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid file type '${ext}'. Only images (JPG, PNG, WEBP) are supported.`), false);
+    }
+  }
+});
+
 // @route   GET /api/transactions
 // @desc    Get all transactions for user
 // @access  Private
 router.get('/', protect, async (req, res) => {
   try {
-    const { page = 1, limit = 20, type, category, startDate, endDate, search } = req.query;
+    const { page = 1, limit = 20, type, category, startDate, endDate, search, paymentMethod } = req.query;
     const query = { user: req.user.id };
 
     if (type) query.type = type;
     if (category) query.category = category;
+    if (paymentMethod) query.paymentMethod = paymentMethod;
     if (startDate || endDate) {
       query.date = {};
       if (startDate) query.date.$gte = new Date(startDate);
@@ -137,6 +168,39 @@ router.post('/', protect, async (req, res) => {
   }
 });
 
+// @route   POST /api/transactions/bulk
+// @desc    Add multiple transactions at once
+// @access  Private
+router.post('/bulk', protect, async (req, res) => {
+  try {
+    const { transactions } = req.body;
+    if (!transactions || !Array.isArray(transactions)) {
+      return res.status(400).json({ success: false, message: 'Please provide an array of transactions' });
+    }
+
+    const userId = req.user.id;
+    const transactionsToInsert = transactions.map(tx => ({
+      ...tx,
+      user: userId,
+      importSource: tx.importSource || 'manual'
+    }));
+
+    const inserted = await Transaction.insertMany(transactionsToInsert);
+    
+    // Update budgets for all new transactions in parallel
+    await updateBudgetsForImportedTransactions(userId, inserted);
+
+    res.status(201).json({
+      success: true,
+      count: inserted.length,
+      data: inserted
+    });
+  } catch (err) {
+    console.error('Bulk transaction error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // @route   PUT /api/transactions/:id
 // @desc    Update transaction
 // @access  Private
@@ -228,17 +292,17 @@ function normalizePaymentMethod(paymentMethod) {
 
 function normalizeCategory(category) {
   if (!category) return 'Other';
-  
+
   // Normalize the category to match exactly with valid categories
   const value = category.trim();
-  
+
   // Check for exact match (case-insensitive)
   for (const validCat of VALID_CATEGORIES) {
     if (validCat.toLowerCase() === value.toLowerCase()) {
       return validCat;
     }
   }
-  
+
   // If no exact match, try to find best match
   const lower = value.toLowerCase();
   if (lower.includes('food') || lower.includes('dining')) return 'Food & Dining';
@@ -259,7 +323,7 @@ function normalizeCategory(category) {
   if (lower.includes('subscription')) return 'Subscriptions';
   if (lower.includes('gift') || lower.includes('donation')) return 'Gifts & Donations';
   if (lower.includes('charge') || lower.includes('fee') || lower.includes('bank')) return 'Bank Charges';
-  
+
   return 'Other';
 }
 
@@ -316,16 +380,28 @@ async function processPdfImport(req, res) {
 
     if (!parseResult.success) {
       console.error('PDF parsing failed:', parseResult.error);
+      const isScannedPdf = parseResult.isScanned === true || parseResult.error?.includes('scanned');
+      
       return res.status(400).json({
         success: false,
-        message: 'Failed to parse PDF: ' + (parseResult.error || 'Unknown error'),
+        message: isScannedPdf 
+          ? 'This PDF appears to be a scanned document (image-based)'
+          : 'Failed to parse PDF: ' + (parseResult.error || 'Unknown error'),
         errors: [parseResult.error || 'The PDF could not be parsed'],
-        suggestions: [
-          'Ensure the PDF is a text-based statement (not only scanned images)',
-          'Check whether the PDF is password-protected',
-          'Try a different statement format or page range',
-          'Ensure the file contains clear transaction data with date, description, and amount columns',
-        ],
+        isScanned: isScannedPdf,
+        suggestions: isScannedPdf
+          ? [
+              'This is a scanned image PDF - text cannot be extracted',
+              'Please use a text-based PDF from your bank portal',
+              'Convert the scanned PDF to text using OCR software',
+              'Download a fresh statement as PDF/text from your bank website',
+            ]
+          : [
+              'Ensure the PDF is a text-based statement (not only scanned images)',
+              'Check whether the PDF is password-protected',
+              'Try a different statement format or page range',
+              'Ensure the file contains clear transaction data with date, description, and amount columns',
+            ],
       });
     }
 
@@ -613,6 +689,70 @@ router.get('/summary/cashflow', protect, async (req, res) => {
     res.json({ success: true, data: results, monthlyIncome: req.user.monthlyIncome });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// @route   POST /api/transactions/scan-receipt
+// @desc    Scan receipt image via OCR and extract data
+// @access  Private
+router.post('/scan-receipt', protect, (req, res, next) => {
+  imageUpload.single('receipt')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
+  let filePath = req.file?.path;
+  if (!filePath) {
+    return res.status(400).json({ success: false, message: 'Please upload a receipt image' });
+  }
+
+  try {
+    console.log('Starting enhanced receipt scan for:', filePath);
+    const result = await enhancedReceiptService.processReceiptImage(filePath, {
+      preprocess: true,
+      useIndianParser: true,
+      ocrProvider: process.env.OCR_PROVIDER || 'tesseract'
+    });
+    
+    console.log('Enhanced receipt scan status:', result.status);
+
+    // Clean up temporary image
+    safeUnlink(filePath);
+
+    if (result.status === 'failed') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Failed to process receipt: ' + (result.errors?.[0]?.message || 'Unknown error'),
+        reasons: result.errors
+      });
+    }
+
+    const { extracted } = result;
+
+    return res.json({
+      success: true,
+      data: {
+        amount: extracted.total || 0,
+        date: extracted.date || new Date().toISOString().slice(0, 10),
+        merchant: extracted.store || '',
+        category: extracted.items?.[0]?.category || 'Other',
+        items: extracted.items || [],
+        metadata: {
+          confidence: extracted.confidence,
+          processingTimeMs: result.processingTimeMs
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Scan Receipt Error:', err);
+    if (filePath) safeUnlink(filePath);
+    return res.status(500).json({ 
+      success: false, 
+      message: err.message || 'Server error during OCR processing',
+      details: err.stack
+    });
   }
 });
 

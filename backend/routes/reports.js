@@ -158,3 +158,68 @@ router.get('/export/excel', protect, async (req, res) => {
 });
 
 module.exports = router;
+
+// @route   GET /api/reports/summary/payment-methods
+// @desc    Get payment method breakdown
+// @access  Private
+router.get('/summary/payment-methods', protect, async (req, res) => {
+  try {
+    const { startDate, endDate, month, year } = req.query;
+    let query = { user: req.user.id };
+
+    if (startDate && endDate) {
+      query.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    } else if (month && year) {
+      query.date = {
+        $gte: new Date(year, month - 1, 1),
+        $lte: new Date(year, month, 0, 23, 59, 59),
+      };
+    }
+
+    const transactions = await Transaction.find(query);
+
+    const paymentMethodStats = {};
+    const upiStats = { sent: 0, received: 0, count: 0, merchants: new Set() };
+
+    transactions.forEach(tx => {
+      const method = tx.paymentMethod || 'other';
+      if (!paymentMethodStats[method]) {
+        paymentMethodStats[method] = { income: 0, expense: 0, count: 0 };
+      }
+      paymentMethodStats[method].count++;
+      if (tx.type === 'income') {
+        paymentMethodStats[method].income += tx.amount;
+      } else {
+        paymentMethodStats[method].expense += tx.amount;
+      }
+
+      if (method === 'upi') {
+        if (tx.type === 'income') {
+          upiStats.received += tx.amount;
+        } else {
+          upiStats.sent += tx.amount;
+        }
+        upiStats.count++;
+        if (tx.description) {
+          const upiIdMatch = tx.description.match(/[a-zA-Z0-9]+@[a-zA-Z]+/);
+          if (upiIdMatch) upiStats.merchants.add(upiIdMatch[0]);
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        breakdown: paymentMethodStats,
+        upi: {
+          totalSent: upiStats.sent,
+          totalReceived: upiStats.received,
+          transactionCount: upiStats.count,
+          uniqueMerchants: upiStats.merchants.size,
+        },
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});

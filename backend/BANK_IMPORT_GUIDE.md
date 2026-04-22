@@ -7,7 +7,7 @@ This guide explains how to use the PDF and CSV bank statement import features to
 ### PDF Bank Statement Import
 - **Automatic Parsing**: Extracts date, description, amount, and transaction type from PDF files
 - **Multi-Bank Support**: Detects and handles various bank statement formats (HDFC, ICICI, SBI, Axis, Yes Bank, Kotak, IDBI)
-- **Format Detection**: Automatically identifies statement format and statement type (table or narrative)
+- **Format Detect   ion**: Automatically identifies statement format and statement type (table or narrative)
 - **Duplicate Prevention**: Prevents importing the same transaction twice
 - **Intelligent Categorization**: Automatically categorizes transactions based on description
 - **Error Handling**: Provides detailed error messages and suggestions for troubleshooting

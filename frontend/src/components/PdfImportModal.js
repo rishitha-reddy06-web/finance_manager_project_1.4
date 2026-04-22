@@ -78,6 +78,7 @@ const PdfImportModal = ({ onClose, onSuccess }) => {
         duplicateCount: errorData?.duplicateCount || 0,
         textPreview: errorData?.textPreview || null,
         bankDetected: errorData?.bankDetected || null,
+        isScanned: errorData?.isScanned || false,
       });
       setStep('error');
       toast.error(errorData?.message || 'Import failed');
@@ -179,97 +180,118 @@ const PdfImportModal = ({ onClose, onSuccess }) => {
     </div>
   );
 
-  const renderErrorStep = () => (
-    <div style={{ padding: '20px' }}>
-      <div style={{ padding: '16px', backgroundColor: '#fee', borderRadius: '8px', marginBottom: '16px' }}>
-        <h3 style={{ color: '#c33', marginBottom: '8px' }}>⚠️ {error?.title}</h3>
-        {error?.details && error.details.length > 0 && (
-          <div style={{ marginBottom: '12px' }}>
-            {error.details.map((detail, i) => (
-              <p key={i} style={{ fontSize: '12px', color: '#666', margin: '4px 0' }}>
-                • {detail}
+const renderErrorStep = () => {
+    const isScanned = error?.isScanned;
+    
+    return (
+      <div style={{ padding: '20px' }}>
+        {isScanned ? (
+          <div style={{ padding: '16px', backgroundColor: '#fff3cd', borderRadius: '8px', marginBottom: '16px', border: '1px solid #ffc107' }}>
+            <h3 style={{ color: '#856404', marginBottom: '8px' }}>📷 Scanned PDF Detected</h3>
+            <p style={{ fontSize: '14px', color: '#856404', marginBottom: '12px' }}>
+              This PDF appears to be a scanned image. Text cannot be extracted from image-based PDFs.
+            </p>
+            <div style={{ fontSize: '12px', color: '#856404', padding: '12px', backgroundColor: '#fff', borderRadius: '4px' }}>
+              <strong>To fix this:</strong>
+              <ul style={{ margin: '8px 0 0 0', paddingLeft: '16px' }}>
+                <li>Download a fresh bank statement as a text-based PDF from your bank's website</li>
+                <li>Use OCR software to convert the scanned PDF to text</li>
+                <li>Export your statement as PDF/text from online banking</li>
+              </ul>
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: '16px', backgroundColor: '#fee', borderRadius: '8px', marginBottom: '16px' }}>
+            <h3 style={{ color: '#c33', marginBottom: '8px' }}>⚠️ {error?.title}</h3>
+            {error?.details && error.details.length > 0 && (
+              <div style={{ marginBottom: '12px' }}>
+                {error.details.map((detail, i) => (
+                  <p key={i} style={{ fontSize: '12px', color: '#666', margin: '4px 0' }}>
+                    • {detail}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isScanned && error?.duplicateCount > 0 && (
+          <div style={{ padding: '12px', backgroundColor: '#fef3cd', borderRadius: '8px', marginBottom: '16px' }}>
+            <h4 style={{ marginBottom: '8px', color: '#856404' }}>
+              ⚠️ {error.duplicateCount} Duplicate Transaction{error.duplicateCount > 1 ? 's' : ''}
+            </h4>
+            {error.duplicates && error.duplicates.length > 0 && (
+              <div style={{ fontSize: '12px' }}>
+                {error.duplicates.map((dup, i) => (
+                  <p key={i} style={{ margin: '4px 0', color: '#856404' }}>
+                    • {new Date(dup.date).toLocaleDateString()} - ₹{dup.amount.toFixed(2)} - {dup.description.substring(0, 40)}...
+                  </p>
+                ))}
+                {error.duplicateCount > 5 && (
+                  <p style={{ margin: '8px 0', color: '#856404', fontStyle: 'italic' }}>
+                    ... and {error.duplicateCount - 5} more
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isScanned && error?.suggestions && error.suggestions.length > 0 && (
+          <div style={{ padding: '12px', backgroundColor: '#d1ecf1', borderRadius: '8px', marginBottom: '16px' }}>
+            <h4 style={{ marginBottom: '8px', color: '#0c5460' }}>💡 Suggestions</h4>
+            {error.suggestions.map((suggestion, i) => (
+              <p key={i} style={{ fontSize: '12px', color: '#0c5460', margin: '4px 0' }}>
+                • {suggestion}
               </p>
             ))}
           </div>
         )}
-      </div>
 
-      {error?.duplicateCount > 0 && (
-        <div style={{ padding: '12px', backgroundColor: '#fef3cd', borderRadius: '8px', marginBottom: '16px' }}>
-          <h4 style={{ marginBottom: '8px', color: '#856404' }}>
-            ⚠️ {error.duplicateCount} Duplicate Transaction{error.duplicateCount > 1 ? 's' : ''}
-          </h4>
-          {error.duplicates && error.duplicates.length > 0 && (
-            <div style={{ fontSize: '12px' }}>
-              {error.duplicates.map((dup, i) => (
-                <p key={i} style={{ margin: '4px 0', color: '#856404' }}>
-                  • {new Date(dup.date).toLocaleDateString()} - ₹{dup.amount.toFixed(2)} - {dup.description.substring(0, 40)}...
-                </p>
-              ))}
-              {error.duplicateCount > 5 && (
-                <p style={{ margin: '8px 0', color: '#856404', fontStyle: 'italic' }}>
-                  ... and {error.duplicateCount - 5} more
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {error?.suggestions && error.suggestions.length > 0 && (
-        <div style={{ padding: '12px', backgroundColor: '#d1ecf1', borderRadius: '8px', marginBottom: '16px' }}>
-          <h4 style={{ marginBottom: '8px', color: '#0c5460' }}>💡 Suggestions</h4>
-          {error.suggestions.map((suggestion, i) => (
-            <p key={i} style={{ fontSize: '12px', color: '#0c5460', margin: '4px 0' }}>
-              • {suggestion}
+        {!isScanned && error?.textPreview && (
+          <div style={{ padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '8px', marginBottom: '16px' }}>
+            <h4 style={{ marginBottom: '8px', color: '#495057' }}>📄 Extracted Text Preview</h4>
+            <p style={{ fontSize: '10px', color: '#6c757d', marginBottom: '8px' }}>
+              Bank Detected: {error.bankDetected || 'Unknown'}
             </p>
-          ))}
-        </div>
-      )}
+            <pre style={{
+              fontSize: '10px',
+              color: '#495057',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              maxHeight: '150px',
+              overflow: 'auto',
+              backgroundColor: '#e9ecef',
+              padding: '8px',
+              borderRadius: '4px',
+              margin: 0
+            }}>
+              {error.textPreview}
+            </pre>
+          </div>
+        )}
 
-      {error?.textPreview && (
-        <div style={{ padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '8px', marginBottom: '16px' }}>
-          <h4 style={{ marginBottom: '8px', color: '#495057' }}>📄 Extracted Text Preview</h4>
-          <p style={{ fontSize: '10px', color: '#6c757d', marginBottom: '8px' }}>
-            Bank Detected: {error.bankDetected || 'Unknown'}
-          </p>
-          <pre style={{
-            fontSize: '10px',
-            color: '#495057',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            maxHeight: '150px',
-            overflow: 'auto',
-            backgroundColor: '#e9ecef',
-            padding: '8px',
-            borderRadius: '4px',
-            margin: 0
-          }}>
-            {error.textPreview}
-          </pre>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              setStep('upload');
+              setFile(null);
+              setError(null);
+            }}
+          >
+            Try Again
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={onClose}
+          >
+            Close
+          </button>
         </div>
-      )}
-
-      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
-        <button
-          className="btn btn-secondary"
-          onClick={() => {
-            setStep('upload');
-            setFile(null);
-            setError(null);
-          }}
-        >
-          Try Again
-        </button>
-        <button
-          className="btn btn-secondary"
-          onClick={onClose}
-        >
-          Close
-        </button>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderSuccessStep = () => (
     <div style={{ padding: '40px 20px', textAlign: 'center' }}>

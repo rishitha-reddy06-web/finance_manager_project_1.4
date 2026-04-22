@@ -159,7 +159,7 @@ def predict_expenses(request: PredictionRequest):
         predictions, std = arima_like_predict(values, request.forecast_months)
         
         next_months = get_next_months(request.forecast_months)
-        
+    
         results = []
         for i, (month, pred) in enumerate(zip(next_months, predictions)):
             margin = std * 1.96 * (1 + i * 0.1)  # Increase uncertainty over time
@@ -169,7 +169,7 @@ def predict_expenses(request: PredictionRequest):
                 "lower_bound": max(0, round(pred - margin, 2)),
                 "upper_bound": round(pred + margin, 2),
             })
-        
+                    
         # Calculate trend
         if len(values) >= 2:
             trend_pct = ((values[-1] - values[0]) / max(values[0], 1)) * 100 / len(values)

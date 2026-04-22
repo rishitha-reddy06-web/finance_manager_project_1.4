@@ -1,100 +1,202 @@
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const Transaction = require('../models/Transaction');
+const Budget = require('../models/Budget');
 const { protect } = require('../middleware/auth');
+const { getMLPrediction, trainAllModels } = require('../utils/mlEngine');
+const PatternDetector = require('../utils/patternDetector');
+const RecommendationEngine = require('../utils/recommendationEngine');
+
+// ─── Helper: Generate human-readable AI narrative ───
+function generateAINarrative(breakdown, patterns, userName) {
+  const cats = Object.entries(breakdown)
+    .sort((a, b) => b[1].predicted_amount - a[1].predicted_amount);
+
+  if (cats.length === 0) {
+    return `Hello ${userName}! Add more transactions so I can start learning your spending patterns and give you intelligent forecasts.`;
+  }
+
+  // Find top increasing categories
+  const increasing = cats
+    .filter(([, v]) => v.trend === 'increasing')
+    .sort((a, b) => Math.abs(b[1].features.growthRate) - Math.abs(a[1].features.growthRate));
+
+  const decreasing = cats
+    .filter(([, v]) => v.trend === 'decreasing')
+    .sort((a, b) => Math.abs(b[1].features.growthRate) - Math.abs(a[1].features.growthRate));
+
+  const highRisk = cats.filter(([, v]) => v.risk_level === 'high');
+
+  let narrative = `Hello ${userName}! Here's what my analysis reveals:\n\n`;
+
+  // Explain WHY spending is changing
+  if (increasing.length > 0) {
+    const top2 = increasing.slice(0, 2);
+    narrative += `📈 Your spending is rising due to `;
+    narrative += top2.map(([cat, v]) => `${cat} (+${Math.abs(v.features.growthRate)}%)`).join(' and ');
+    narrative += '. ';
+
+    if (highRisk.length > 0) {
+      const daysLeft = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate() - new Date().getDate();
+      narrative += `At this rate, you may exceed your budget in ${daysLeft} days. `;
+    }
+    narrative += '\n\n';
+  }
+
+  if (decreasing.length > 0) {
+    narrative += `📉 Good news: `;
+    narrative += decreasing.slice(0, 2).map(([cat, v]) => `${cat} (${v.features.growthRate}%)`).join(' and ');
+    narrative += ` spending is dropping. Keep it up!\n\n`;
+  }
+
+  // Weekend pattern
+  if (patterns?.weekend_vs_weekday) {
+    const wk = patterns.weekend_vs_weekday;
+    if (wk.bias === 'weekend_heavy') {
+      narrative += `🗓️ Pattern: You spend ₹${wk.avgWeekend.toLocaleString()} on weekends vs ₹${wk.avgWeekday.toLocaleString()} on weekdays — weekend spending is significantly higher.\n\n`;
+    } else if (wk.bias === 'weekday_heavy') {
+      narrative += `🗓️ Pattern: Weekday spending (₹${wk.avgWeekday.toLocaleString()}) exceeds weekends (₹${wk.avgWeekend.toLocaleString()}) — likely routine expenses.\n\n`;
+    }
+  }
+
+  // Risk warning
+  if (highRisk.length > 0) {
+    const riskNames = highRisk.map(([cat, v]) => `${cat} (${v.probability_of_exceeding}% chance)`).join(', ');
+    narrative += `🚨 Risk Alert: There is a high probability of overspending in ${riskNames}.\n\n`;
+  }
+
+  // Top suggestion
+  const topCat = cats[0];
+  if (topCat) {
+    const dailySpend = Math.round(topCat[1].predicted_amount / 30);
+    const reducedDaily = Math.round(dailySpend * 0.8);
+    narrative += `💡 Suggestion: Reducing ${topCat[0]} to ₹${reducedDaily}/day (from ₹${dailySpend}/day) could save ₹${Math.round(topCat[1].predicted_amount * 0.2).toLocaleString()}/month.`;
+  }
+
+  return narrative;
+}
+
+// ─── Helper: Generate per-category actionable suggestions ───
+function generateCategorySuggestions(cat, data) {
+  const suggestions = [];
+  const dailySpend = Math.round(data.predicted_amount / 30);
+
+  if (data.trend === 'increasing' && data.features.growthRate > 10) {
+    suggestions.push(`Reduce ₹${Math.round(dailySpend * 0.2)}/day in ${cat} to stay within budget`);
+  }
+  if (data.features.weekendRatio > 60) {
+    suggestions.push(`Limit ${cat} spending on weekends — ${data.features.weekendRatio}% of your spend happens then`);
+  }
+  if (data.features.frequency > 15) {
+    suggestions.push(`Limit ${cat} transactions to ${Math.max(2, Math.round(data.features.frequency * 0.6))} per week`);
+  }
+  if (data.risk_level === 'high') {
+    suggestions.push(`You are at ${data.probability_of_exceeding}% risk of exceeding your ${cat} budget`);
+  }
+  if (suggestions.length === 0) {
+    suggestions.push(`${cat} spending is stable — keep monitoring`);
+  }
+
+  return suggestions;
+}
+
+// ─── Helper: Generate reason string for a category ───
+function getCategoryReason(data) {
+  const reasons = [];
+  if (data.features.growthRate > 15) reasons.push('rapid month-over-month growth');
+  else if (data.features.growthRate > 5) reasons.push('gradual upward trend');
+  if (data.features.weekendRatio > 60) reasons.push('weekend spikes');
+  if (data.features.frequency > 15) reasons.push('frequent transactions');
+  if (data.features.weekendRatio < 20 && data.features.frequency > 5) reasons.push('consistent weekday routine');
+  return reasons.length > 0 ? reasons.join(', ') : 'stable historical pattern';
+}
+
+// ─── Helper: Confidence label ───
+function getConfidenceLabel(score) {
+  if (score >= 70) return { label: 'High', description: 'Consistent spending pattern detected' };
+  if (score >= 40) return { label: 'Medium', description: 'Moderate variation in spending' };
+  return { label: 'Low', description: 'Unstable or insufficient data' };
+}
 
 // @route   GET /api/predictions/expenses
-// @desc    Get AI prediction for future expenses
+// @desc    Get AI-powered expense prediction with deep insights
 // @access  Private
 router.get('/expenses', protect, async (req, res) => {
   try {
-    // Get last 6 months of data
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const mlPredictions = await getMLPrediction(req.user.id, Transaction);
 
-    const transactions = await Transaction.find({
-      user: req.user.id,
-      type: 'expense',
-      date: { $gte: sixMonthsAgo },
-    }).sort({ date: 1 });
+    // Get pattern analysis from recent transactions
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const recentTxs = await Transaction.find({
+      user: req.user.id, type: 'expense', date: { $gte: threeMonthsAgo }
+    });
+    const patterns = PatternDetector.detectSpendingPatterns(recentTxs);
 
-    if (transactions.length < 5) {
-      // Fallback: simple moving average prediction
-      const monthlySums = {};
-      transactions.forEach(tx => {
-        const key = `${new Date(tx.date).getFullYear()}-${new Date(tx.date).getMonth()}`;
-        monthlySums[key] = (monthlySums[key] || 0) + tx.amount;
-      });
+    // Enrich each category with reason, suggestions, confidence label
+    const enrichedBreakdown = {};
+    for (const [cat, data] of Object.entries(mlPredictions)) {
+      const lastMonth = data.features.monthlyTotal || 0;
+      const pctChange = lastMonth > 0
+        ? Math.round(((data.predicted_amount - lastMonth) / lastMonth) * 100)
+        : 0;
+      const conf = getConfidenceLabel(data.confidence);
 
-      const values = Object.values(monthlySums);
-      const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-
-      return res.json({
-        success: true,
-        data: {
-          predictions: [
-            { month: getNextMon(0), predicted: Math.round(avg * 100) / 100 },
-            { month: getNextMon(1), predicted: Math.round(avg * 1.02 * 100) / 100 },
-            { month: getNextMon(2), predicted: Math.round(avg * 1.04 * 100) / 100 },
-          ],
-          method: 'moving_average',
-          message: 'Prediction based on available data (limited history)',
-        },
-      });
+      enrichedBreakdown[cat] = {
+        ...data,
+        pct_change: pctChange,
+        reason: getCategoryReason(data),
+        suggestions: generateCategorySuggestions(cat, data),
+        confidence_label: conf.label,
+        confidence_description: conf.description,
+        risk_narrative: data.risk_level === 'high'
+          ? `There is a ${data.probability_of_exceeding}% chance you may overspend in ${cat} due to ${getCategoryReason(data)}.`
+          : data.risk_level === 'medium'
+            ? `${cat} is approaching your budget limit — monitor closely.`
+            : `${cat} spending is within healthy bounds.`,
+      };
     }
 
-    // Try to call Python AI service
-    try {
-      const monthlyData = {};
-      transactions.forEach(tx => {
-        const date = new Date(tx.date);
-        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        monthlyData[key] = (monthlyData[key] || 0) + tx.amount;
-      });
+    const totalPredicted = Object.values(enrichedBreakdown)
+      .reduce((sum, cat) => sum + cat.predicted_amount, 0);
 
-      const response = await axios.post(`${process.env.AI_SERVICE_URL}/predict`, {
-        monthly_expenses: monthlyData,
-        forecast_months: 3,
-      }, { timeout: 5000 });
+    // Generate narrative
+    const aiNarrative = generateAINarrative(
+      enrichedBreakdown,
+      patterns,
+      req.user.name?.split(' ')[0] || 'there'
+    );
 
-      return res.json({ success: true, data: response.data });
-    } catch (aiError) {
-      // Fallback to JavaScript prediction
-      const monthlyData = {};
-      transactions.forEach(tx => {
-        const date = new Date(tx.date);
-        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        monthlyData[key] = (monthlyData[key] || 0) + tx.amount;
-      });
+    // Fastest growing category
+    const fastestGrowing = Object.entries(enrichedBreakdown)
+      .sort((a, b) => b[1].features.growthRate - a[1].features.growthRate)[0];
 
-      const values = Object.values(monthlyData);
-      const n = values.length;
-      const predictions = [];
+    // Unusual spike detection (any category > 30% growth)
+    const spikes = Object.entries(enrichedBreakdown)
+      .filter(([, v]) => v.features.growthRate > 30)
+      .map(([cat, v]) => ({ category: cat, growthRate: v.features.growthRate }));
 
-      for (let i = 0; i < 3; i++) {
-        // Weighted moving average
-        const weights = values.slice(-3);
-        const weightedAvg = weights.reduce((sum, val, idx) => sum + val * (idx + 1), 0) /
-          weights.reduce((sum, _, idx) => sum + (idx + 1), 0);
-        const trend = n >= 2 ? (values[n - 1] - values[0]) / (n - 1) : 0;
-        const predicted = Math.max(0, weightedAvg + trend * (i + 0.5));
-        predictions.push({
-          month: getNextMon(i),
-          predicted: Math.round(predicted * 100) / 100,
-        });
-        values.push(predicted);
-      }
-
-      return res.json({
-        success: true,
-        data: {
-          predictions,
-          method: 'weighted_moving_average',
-          message: 'AI service unavailable, using statistical prediction',
+    res.json({
+      success: true,
+      data: {
+        predictions: [{
+          month: 'Next Month',
+          predicted: totalPredicted,
+          breakdown: enrichedBreakdown,
+        }],
+        aiNarrative,
+        patternInsights: {
+          weekendVsWeekday: patterns.weekend_vs_weekday,
+          fastestGrowing: fastestGrowing
+            ? { category: fastestGrowing[0], growthRate: fastestGrowing[1].features.growthRate }
+            : null,
+          spikes,
+          topCategories: patterns.top_categories,
         },
-      });
-    }
+        method: 'ML-Regression + Feature-Engineering + Pattern-Analysis',
+        message: 'AI-powered prediction with behavioral insights and actionable guidance',
+      },
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -108,23 +210,12 @@ router.get('/savings', protect, async (req, res) => {
     const user = req.user;
     const months = parseInt(req.query.months) || 12;
 
-    // Get last 3 months average
     const threeMonthsAgo = new Date();
     threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
 
     const data = await Transaction.aggregate([
-      {
-        $match: {
-          user: user._id,
-          date: { $gte: threeMonthsAgo },
-        },
-      },
-      {
-        $group: {
-          _id: '$type',
-          total: { $sum: '$amount' },
-        },
-      },
+      { $match: { user: user._id, date: { $gte: threeMonthsAgo } } },
+      { $group: { _id: '$type', total: { $sum: '$amount' } } },
     ]);
 
     const transactedAvgIncome = (data.find(d => d._id === 'income')?.total || 0) / 3;
@@ -171,82 +262,32 @@ router.get('/savings', protect, async (req, res) => {
 // @access  Private
 router.get('/recommendations', protect, async (req, res) => {
   try {
-    const user = req.user;
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-
-    const categoryData = await Transaction.aggregate([
-      {
-        $match: {
-          user: user._id,
-          type: 'expense',
-          date: { $gte: oneMonthAgo },
-        },
-      },
-      {
-        $group: {
-          _id: '$category',
-          total: { $sum: '$amount' },
-        },
-      },
-      { $sort: { total: -1 } },
-    ]);
-
-    const totalExpenses = categoryData.reduce((s, c) => s + c.total, 0);
-    const recommendations = [];
-
-    categoryData.forEach(cat => {
-      const pct = totalExpenses > 0 ? (cat.total / totalExpenses) * 100 : 0;
-
-      if (cat._id === 'Food & Dining' && pct > 30) {
-        recommendations.push({
-          category: cat._id,
-          type: 'warning',
-          message: `Food & Dining accounts for ${pct.toFixed(0)}% of your expenses. Consider meal prepping to save more.`,
-          potentialSavings: Math.round(cat.total * 0.2 * 100) / 100,
-        });
-      } else if (cat._id === 'Entertainment' && pct > 15) {
-        recommendations.push({
-          category: cat._id,
-          type: 'warning',
-          message: `Entertainment is ${pct.toFixed(0)}% of your budget. Look for free or low-cost alternatives.`,
-          potentialSavings: Math.round(cat.total * 0.3 * 100) / 100,
-        });
-      } else if (cat._id === 'Shopping' && pct > 25) {
-        recommendations.push({
-          category: cat._id,
-          type: 'warning',
-          message: `Shopping expenses are high at ${pct.toFixed(0)}%. Consider a 30-day rule before non-essential purchases.`,
-          potentialSavings: Math.round(cat.total * 0.25 * 100) / 100,
-        });
-      }
-    });
-
-    const refIncome = Math.max(user.monthlyIncome || 0, totalExpenses); // Use profile income or total expenses as baseline
-
-    if (refIncome > 0) {
-      const actualSavings = Math.max(0, refIncome - totalExpenses);
-      const savingsRate = (actualSavings / refIncome) * 100;
-      if (savingsRate < 20) {
-        recommendations.push({
-          category: 'Savings',
-          type: 'info',
-          message: `Your current savings rate is ${savingsRate.toFixed(0)}%. Financial experts recommend saving at least 20% of income.`,
-          potentialSavings: Math.round((user.monthlyIncome * 0.2 - Math.max(0, user.monthlyIncome - totalExpenses)) * 100) / 100,
-        });
-      }
-    }
-
-    if (recommendations.length === 0) {
-      recommendations.push({
-        category: 'General',
-        type: 'success',
-        message: 'Great job! Your spending patterns look healthy. Keep up the good work!',
-        potentialSavings: 0,
-      });
-    }
-
+    const recommendations = await RecommendationEngine.getAdvancedRecommendations(req.user);
     res.json({ success: true, data: recommendations });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// @route   POST /api/predictions/train
+// @desc    Manually retrain all ML models for user
+// @access  Private
+router.post('/train', protect, async (req, res) => {
+  try {
+    const startTime = Date.now();
+    const result = await trainAllModels(req.user.id, Transaction);
+    const duration = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      message: `Trained ${result.trained} models in ${duration}ms (${result.skipped} skipped — not enough data)`,
+      data: {
+        trained: result.trained,
+        skipped: result.skipped,
+        duration_ms: duration,
+        categories: result.categories,
+      },
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

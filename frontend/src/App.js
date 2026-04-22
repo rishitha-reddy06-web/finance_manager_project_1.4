@@ -9,7 +9,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Transactions from './pages/Transactions';
 import Budgets from './pages/Budgets';
-import Predictions from './pages/Predictions';
+import AiAssistant from './pages/AiAssistant';
 import Reports from './pages/Reports';
 import Alerts from './pages/Alerts';
 import Profile from './pages/Profile';
@@ -45,7 +45,7 @@ function App() {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="transactions" element={<Transactions />} />
             <Route path="budgets" element={<Budgets />} />
-            <Route path="predictions" element={<Predictions />} />
+            <Route path="predictions" element={<AiAssistant />} />
             <Route path="reports" element={<Reports />} />
             <Route path="alerts" element={<Alerts />} />
             <Route path="profile" element={<Profile />} />

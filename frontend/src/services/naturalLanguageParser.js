@@ -122,6 +122,18 @@ const ADD_TRANSACTION_PATTERNS = [
   /^(\d+(?:\.\d{1,2})?)$/
 ];
 
+// Bank SMS patterns (Indian specific)
+const BANK_SMS_PATTERNS = [
+  // Debit Alert: "Debited for INR 500 at STARBUCKS" or "Spent ₹120.00"
+  /debited\s*(?:for|with)?\s*(?:inr|rs\.?|₹|inr)?\s*([\d,]+\.\d{2})\s*(?:at|to|on)\s+([A-Z0-9\s.,&*-]+?)(?:\s+(?:by|from|using|on|date)|$)/i,
+  /spent\s*(?:inr|rs\.?|₹)?\s*([\d,]+\.\d{2})\s*(?:at|on)\s+([A-Z0-9\s.,&*-]+?)(?:\s+(?:on|using)|$)/i,
+  /transaction\s+of\s+(?:inr|rs\.?|₹)?\s*([\d,]+\.\d{2})\s+at\s+([A-Z0-9\s.,&*-]+?)\s+is/i,
+  // Credit Alert: "A/C XX1234 Credited with INR 10,000 for Salary"
+  /credited\s*(?:for|with)?\s*(?:inr|rs\.?|₹)?\s*([\d,]+\.\d{2})\s*(?:for|from|at)\s+([A-Z0-9\s.,&*-]+?)(?:\s+(?:on|by)|$)/i,
+  // UPI/GPay style: "Paid ₹50 to Swiggy"
+  /paid\s*(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d{2})?)\s+to\s+([A-Z0-9\s.,&*-]+?)(?:\s+(?:on|using)|$)/i
+];
+
 // Query patterns
 const QUERY_PATTERNS = [
   /^(?:what|how much|show|tell me)\s+(?:is\s+)?(?:my\s+)?(?:total\s+)?(?:expenses?spending|spent)\s+(?:in|for|during|this|last|past)?\s*(?:month|week|year|today)?/i,
@@ -328,6 +340,42 @@ function detectTransactionType(text) {
 }
 
 /**
+ * Parse Bank SMS alert for transaction details
+ */
+function parseBankSMS(text) {
+  for (const pattern of BANK_SMS_PATTERNS) {
+    const match = text.match(pattern);
+    if (match) {
+      const amount = parseFloat(match[1].replace(/,/g, ''));
+      const merchantRaw = match[2].trim();
+      
+      // Clean up merchant name (remove trailing noise like "is successful", "using info")
+      const merchant = merchantRaw
+        .split(/\s+(?:is|at|on|using|by|from|date)\b/i)[0]
+        .replace(/[.*-]$/, '')
+        .trim();
+
+      const type = /credited/i.test(text) ? 'income' : 'expense';
+      const category = detectCategory(merchant + ' ' + text);
+
+      return {
+        success: true,
+        type: 'sms',
+        data: {
+          type,
+          amount,
+          category,
+          description: merchant,
+          date: new Date(),
+          importSource: 'sms'
+        }
+      };
+    }
+  }
+  return null;
+}
+
+/**
  * Parse voice command for transaction details
  */
 function parseTransactionCommand(text) {
@@ -424,7 +472,7 @@ function parse(text) {
 
   const lowerText = text.toLowerCase().trim();
 
-  // Check for confirmation patterns
+  // 1. Check for confirmation/cancel patterns
   if (CONFIRM_PATTERNS.test(lowerText)) {
     return { success: true, type: 'confirm' };
   }
@@ -433,7 +481,13 @@ function parse(text) {
     return { success: true, type: 'cancel' };
   }
 
-  // Check for query patterns first
+  // 2. Check for Bank SMS patterns (HI PRIORITY)
+  const smsResult = parseBankSMS(text);
+  if (smsResult) {
+    return smsResult;
+  }
+
+  // 3. Check for query patterns
   const isQuery = QUERY_PATTERNS.some(pattern => pattern.test(text));
 
   if (isQuery) {

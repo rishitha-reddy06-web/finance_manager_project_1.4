@@ -2,7 +2,6 @@
 
 A full-stack intelligent personal finance management web application with AI-driven expense forecasting, budget tracking, interactive dashboards, and personalized recommendations.
 
----
 
 ## 📋 Table of Contents
 - [Features](#features)
